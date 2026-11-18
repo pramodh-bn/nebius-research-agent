@@ -1,14 +1,14 @@
-# <Project Name> — Research Agent
+﻿# Research Courtroom — Research Agent
 
 > ODSC × Nebius Hackathon submission · Challenge: *Build a research agent that brings its sources*
 
-**One-line pitch:** <What question does your agent answer, and for whom?>
+**One-line pitch:** Contested research questions, argued by a prosecution and defense from cited web evidence and ruled on by an impartial judge, for anyone who needs a verifiable answer rather than a one-sided summary. (Status: MVP, see `docs/BASELINE.md`.)
 
 - **Demo video (2–3 min):** <link>
 - **Team:** <names / GitHub handles>
 
 ## The problem
-<Who is the user? What research task does the agent help them finish? Why does it matter?>
+Researchers and curious users facing disputed questions. A single synthesized answer hides the opposing case; Research Courtroom surfaces both sides, grounds them in an evidence ledger, and lets the user challenge the verdict.
 
 ## How it works
 ```
@@ -32,7 +32,7 @@ cd <repo>
 python -m venv .venv && source .venv/bin/activate
 pip install -r requirements.txt
 cp .env.example .env   # add your keys — never commit them
-python src/agent.py "Your research question here"
+python src/agent.py "Your research question here"   # starter CLI\nstreamlit run app.py                                 # Research Courtroom UI\npython -m pytest -q                                  # tests
 ```
 
 ## Example
@@ -54,3 +54,4 @@ python src/agent.py "Your research question here"
 
 ## License
 MIT
+
