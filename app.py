@@ -18,8 +18,8 @@ def get_courtroom():
     if not nebius or not tavily:
         return None
     return Courtroom(TavilySearch(tavily), NebiusReasoner(
-        nebius, os.getenv('NEBIUS_MODEL', 'meta-llama/Llama-3.3-70B-Instruct'),
-        os.getenv('NEBIUS_BASE_URL', 'https://api.studio.nebius.com/v1')))
+        nebius, os.getenv('NEBIUS_MODEL', 'Qwen/Qwen3-235B-A22B-Instruct-2507'),
+        os.getenv('NEBIUS_BASE_URL', 'https://api.tokenfactory.nebius.com/v1')))
 
 def show_claim(claim):
     v = claim.get('verification', {})
