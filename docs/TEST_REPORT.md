@@ -14,13 +14,15 @@ Covered: empty question; empty search results; search failure; duplicate sources
 - Found: a live case showed the judge's `change_explanation` can misstate whether new evidence was added; fixed by computing the new-source count in code.
 - A nonsense query still returned Tavily results, so the "no results" path was not triggered live.
 
+## UI check (2026-11-19, real browser, live keys)
+`streamlit run app.py`, driven through a browser agent at http://localhost:8501: page loaded with no error banner; a live case rendered prosecution/defense, 4-exchange cross-examination, verdict with unresolved items, and an 8-source ledger; all claims showed VERIFIED badges with clickable source links; a challenge added 2 sources and the revision history showed before/after, reason and new evidence; a private-URL submission showed the "blocked" warning and "blocked by safety checks; not fetched". Observed oddity: the model's explanation text again said "no new evidence" even though sources were added (the code-computed prefix gives the true count). The UI was driven by an automated agent, not hand-inspected for layout. A headless `AppTest` still hangs in this environment.
+
 ## Other checks
 - Starter CLI `src/agent.py`: imports and exposes `research` with dummy keys (no network call made).
 - Secret scan of tracked files: no keys found; `.env` is untracked and git-ignored.
 - Fresh-clone test: `git clone -b dev` of the local repo (commit 62042ea) into a temp directory, then `python -m pytest -q` -> 52 passed, 1 skipped. Dependencies were already installed in the environment, so `pip install -r requirements.txt` was not re-run in a clean virtualenv.
 
 ## Not verified
-- **Streamlit UI not run interactively**; a headless `AppTest` hung in this environment, so UI code is only syntax-checked.
 - Starter CLI against live services.
 
 ## Known limitations
