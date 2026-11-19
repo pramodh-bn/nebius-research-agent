@@ -63,6 +63,13 @@ if case:
             for limit in argument.get('limitations', []):
                 st.caption(f'Limitation: {limit}')
 
+    if case.cross_exam.get('exchanges'):
+        st.subheader('Cross-examination')
+        for x in case.cross_exam['exchanges']:
+            st.markdown(f"**{x['asker'].title()} asks:** {x['question']}")
+            show_claim({'text': x['answer'], 'status': 'answer', 'sources': x['sources'],
+                        'verification': x['verification'], 'verified': x['verified']})
+
     st.subheader('⚖️ Judicial verdict')
     st.markdown(f"**{case.verdict.get('decision', 'Inconclusive')}**")
     st.write(case.verdict.get('reasoning', ''))

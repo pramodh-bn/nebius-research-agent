@@ -32,6 +32,11 @@ class FakeReasoner:
             body = json.loads(user.split('\n')[1])
             return {'verifications': [{'index': b['index'], 'status': self.verify.get(b['index'], 'supported'),
                                        'explanation': 'ok'} for b in body]}
+        if 'impartial judge' not in user and 'ONE cross-examination' in user:
+            return {'exchanges': [
+                {'asker': 'prosecution', 'question': 'Why mixed?', 'answer': 'Sources disagree', 'sources': ['E1']},
+                {'asker': 'defense', 'question': 'Sample?', 'answer': 'Unknown', 'sources': ['E404']},
+                {'asker': 'judge', 'question': 'x', 'answer': 'ignored', 'sources': ['E1']}]}
         claim = {'text': 'Evidence is mixed', 'sources': self.claim_sources, 'status': 'supported'}
         if 'impartial judge' in user:
             return {'decision': 'Inconclusive', 'reasoning': 'Evidence is mixed.', 'claims': [claim],
@@ -169,3 +174,40 @@ def test_verdict_citations_all_resolve():
     for part in (case.prosecution, case.defense, case.verdict):
         for claim in part['claims']:
             assert set(claim['sources']) <= ids
+
+
+def test_end_to_end_mocked_case_with_cross_exam():
+    r = FakeReasoner()
+    case = court(reasoner=r).file_case('Is this a good idea?')
+    assert case.prosecution['claims'] and case.defense['claims']
+    ex = case.cross_exam['exchanges']
+    assert [e['asker'] for e in ex] == ['prosecution', 'defense']  # unknown asker dropped
+    assert ex[0]['verified'] and ex[0]['sources'] == ['E1']
+    assert ex[1]['sources'] == [] and not ex[1]['verified']  # fabricated ID stripped
+    assert case.verdict['decision'] == 'Inconclusive'
+    assert case.calls_used == 8 == r.calls
+    judge_prompt = [u for s_, u in r.prompts if 'impartial judge' in u][0]
+    assert 'Sources disagree' in judge_prompt  # judge sees the cross-examination
+
+
+def test_inconclusive_forced_when_nothing_verified():
+    case = court(reasoner=FakeReasoner(verify={0: 'unsupported'})).file_case('q')
+    assert case.verdict['decision'].startswith('Inconclusive')
+    assert case.verdict['model_decision'] == 'Inconclusive'
+    r = FakeReasoner(verify={0: 'contradicted'})
+    case = court(reasoner=r).file_case('q')
+    assert case.verdict['decision'].startswith('Inconclusive') and case.verdict['evidence_warning']
+
+
+def test_call_budget_bounded():
+    r = FakeReasoner()
+    with pytest.raises(CourtroomError, match='budget'):
+        Courtroom(FakeSearch(), r, max_calls=3).file_case('q')
+    assert r.calls <= 3
+
+
+def test_budget_resets_per_operation():
+    c = court()
+    case = c.file_case('q')
+    c.challenge(case, 'more?')
+    assert case.calls_used == 6 and len(case.revisions) == 1
