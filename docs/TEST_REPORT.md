@@ -10,7 +10,7 @@ Covered: empty question; empty search results; search failure; duplicate sources
 ## Other checks
 - Starter CLI `src/agent.py`: imports and exposes `research` with dummy keys (no network call made).
 - Secret scan of tracked files: no keys found; `.env` is untracked and git-ignored.
-- Fresh-clone test: see the final run recorded in the git history message of the submission branch / below.
+- Fresh-clone test: `git clone -b dev` of the local repo (commit 62042ea) into a temp directory, then `python -m pytest -q` -> 52 passed, 1 skipped. Dependencies were already installed in the environment, so `pip install -r requirements.txt` was not re-run in a clean virtualenv.
 
 ## Not verified
 - **Live Nebius and Tavily calls: not run** (no API keys were available). Opt-in test: `tests/test_live.py` (`RUN_LIVE=1` plus both keys).
