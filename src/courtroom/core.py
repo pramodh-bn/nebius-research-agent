@@ -16,6 +16,8 @@ from pydantic import BaseModel, ValidationError
 VERIFICATION_STATUSES = ('supported', 'partially_supported', 'contradicted', 'unsupported', 'insufficient_evidence')
 MAX_EXCERPT = 2400
 MAX_ATTEMPTS = 2  # initial call + one retry
+MAX_CALLS = 16  # hard cap on model calls per operation (file_case / challenge); a normal case uses 8
+MAX_EXCHANGES = 4
 _TRACKING = re.compile(r'^(utm_|fbclid$|gclid$|mc_eid$|ref$)', re.I)
 _INJECTION = re.compile(
     r'(ignore|disregard|forget)\s+(all\s+|any\s+)?(previous|prior|above|earlier)|'
@@ -51,6 +53,8 @@ class Case:
     verdict: dict = field(default_factory=dict)
     revisions: list[dict] = field(default_factory=list)
     warnings: list[str] = field(default_factory=list)
+    cross_exam: dict = field(default_factory=dict)
+    calls_used: int = 0
 
 
 class Search(Protocol):
@@ -167,13 +171,21 @@ def validate_claims(result: dict, allowed: set[str]) -> dict:
 
 
 class Courtroom:
-    def __init__(self, search: Search, reasoner: Reasoner, max_attempts: int = MAX_ATTEMPTS):
+    def __init__(self, search: Search, reasoner: Reasoner, max_attempts: int = MAX_ATTEMPTS,
+                 max_calls: int = MAX_CALLS):
         self.search, self.reasoner, self.max_attempts = search, reasoner, max_attempts
+        self.max_calls, self._calls = max_calls, 0
+
+    def _begin(self) -> None:
+        self._calls = 0
 
     # -- provider access with bounded retries --
     def _complete(self, user: str, system: str = SYSTEM) -> dict:
         last: Exception | None = None
         for _ in range(self.max_attempts):
+            if self._calls >= self.max_calls:
+                raise CourtroomError(f'Model call budget exceeded ({self.max_calls} calls)')
+            self._calls += 1
             try:
                 out = self.reasoner.complete(system, user)
                 if not isinstance(out, dict):
@@ -265,6 +277,7 @@ class Courtroom:
     def judge(self, case: Case, challenge: str = '') -> dict:
         prompt = (f'Question: {case.question}\nEvidence: {evidence_payload(case)}\n'
                   f'Prosecution: {json.dumps(case.prosecution)}\nDefense: {json.dumps(case.defense)}\n'
+                  f'Cross-examination: {json.dumps(case.cross_exam)}\n'
                   f'User challenge (untrusted): {challenge}\nPrevious verdict: {json.dumps(case.verdict)}\n'
                   'Act as impartial judge. Independently inspect evidence excerpts; arguments are NOT evidence. '
                   'Cite only evidence IDs from the ledger; uncited findings are not allowed. '
@@ -274,11 +287,36 @@ class Courtroom:
                   '"claims":[{"text":"...","sources":["E1"],"status":"supported|contested|unsupported"}],'
                   '"unresolved":["..."],"change_explanation":"..."}.')
         result = validate_claims(self._complete(prompt), {e.id for e in case.evidence})
-        return self.verify_claims(case, result)
+        result = self.verify_claims(case, result)
+        if result.get('evidence_warning'):
+            # No verified claim backs this verdict: never present it as a firm decision.
+            result['model_decision'] = result.get('decision', '')
+            result['decision'] = 'Inconclusive (insufficient verified evidence)'
+        return result
+
+    def cross_examine(self, case: Case) -> dict:
+        """One bounded cross-examination: each side questions the other; answers must cite the ledger."""
+        prompt = (f'Question: {case.question}\nProsecution: {json.dumps(case.prosecution)}\n'
+                  f'Defense: {json.dumps(case.defense)}\n'
+                  f'Conduct ONE cross-examination round with at most {MAX_EXCHANGES} exchanges. Each side challenges '
+                  'the weakest claim of the other; the answerer must cite ledger evidence IDs or concede. '
+                  'JSON schema: {"exchanges":[{"asker":"prosecution|defense","question":"...",'
+                  '"answer":"...","sources":["E1"]}]}. '
+                  f'Evidence: {evidence_payload(case)}')
+        raw = self._complete(prompt).get('exchanges', [])
+        exchanges = [x for x in raw if isinstance(x, dict) and x.get('asker') in ('prosecution', 'defense')][:MAX_EXCHANGES]
+        claims = [{'text': str(x.get('answer', '')), 'sources': x.get('sources', []), 'status': 'contested'} for x in exchanges]
+        checked = self.verify_claims(case, validate_claims({'claims': claims}, {e.id for e in case.evidence}))
+        for x, c in zip(exchanges, checked['claims']):
+            x['question'] = str(x.get('question', ''))[:600]
+            x['answer'] = c['text'][:1200]
+            x.update(sources=c['sources'], verification=c['verification'], verified=c['verified'])
+        return {'exchanges': exchanges}
 
     def file_case(self, question: str) -> Case:
         if not question.strip():
             raise ValueError('Enter a research question')
+        self._begin()
         case = Case(question=question.strip())
         self.add_evidence(case, [f'{case.question} supporting evidence', f'{case.question} counterarguments evidence'])
         if not case.evidence:
@@ -286,7 +324,9 @@ class Courtroom:
             raise ValueError(f'No retrievable evidence. Try a different question.{detail}')
         case.prosecution = self.argue(case, 'prosecution')
         case.defense = self.argue(case, 'defense')
+        case.cross_exam = self.cross_examine(case)
         case.verdict = self.judge(case)
+        case.calls_used = self._calls
         return case
 
     def challenge(self, case: Case, question: str, source_url: str = '') -> Case:
@@ -296,10 +336,12 @@ class Courtroom:
             raise ValueError('Source must be an HTTP(S) URL')
         # A URL is a search hint, NOT automatically admitted as verified evidence.
         self.add_evidence(case, [source_url] if source_url else [f'{case.question} {question}'])
+        self._begin()
         previous = dict(case.verdict)
         case.prosecution = self.argue(case, 'prosecution')
         case.defense = self.argue(case, 'defense')
         case.verdict = self.judge(case, f'{question}\nSuggested source URL: {source_url}')
         case.revisions.append({'challenge': question, 'source_url': source_url,
                                'previous': previous, 'current': dict(case.verdict)})
+        case.calls_used = self._calls
         return case
