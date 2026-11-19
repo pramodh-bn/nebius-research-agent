@@ -221,8 +221,8 @@ interface LiveFeedEvent {
 }
 
 export function Courtroom() {
-  const [currentCase, setCurrentCase] = useState<Case>(sampleCase);
-  const [question, setQuestion] = useState(sampleQuestion);
+  const [currentCase, setCurrentCase] = useState<Case | null>(null);
+  const [question, setQuestion] = useState('');
   const [ledgerOpen, setLedgerOpen] = useState(false);
   const [selectedSource, setSelectedSource] = useState<Evidence>();
   const [filter, setFilter] = useState('All');
@@ -235,21 +235,29 @@ export function Courtroom() {
   const [notice, setNotice] = useState('');
   const [error, setError] = useState('');
   const [stage, setStage] = useState<number | null>(null);
-  const [revisions, setRevisions] = useState<Revision[]>(sampleCase.revisions);
+  const [revisions, setRevisions] = useState<Revision[]>([]);
   const [blockedSources, setBlockedSources] = useState<Evidence[]>([]);
   const [filingNotice, setFilingNotice] = useState('');
   const [showRevisionDiff, setShowRevisionDiff] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [liveEvents, setLiveEvents] = useState<LiveFeedEvent[]>([]);
   const [currentStageName, setCurrentStageName] = useState<string>('');
+  const [verdictModalOpen, setVerdictModalOpen] = useState(false);
+  const [verdictModalData, setVerdictModalData] = useState<{
+    decision: string;
+    reasoning: string;
+    id: string;
+    verifiedCount: number;
+    evidenceCount: number;
+  } | null>(null);
 
-  const isLive = currentCase.mode === 'live';
-  const allClaims = [...currentCase.prosecution, ...currentCase.defense];
-  const allEvidence = [...currentCase.evidence, ...blockedSources];
+  const isLive = currentCase?.mode === 'live';
+  const allClaims = currentCase ? [...currentCase.prosecution, ...currentCase.defense] : [];
+  const allEvidence = currentCase ? [...currentCase.evidence, ...blockedSources] : blockedSources;
   const exchanges: Exchange[] =
-    currentCase.exchanges && currentCase.exchanges.length > 0
+    currentCase?.exchanges && currentCase.exchanges.length > 0
       ? currentCase.exchanges
-      : (isLive ? [] : defaultExchanges);
+      : [];
 
   const selectSource = (id: string) => setSelectedSource(allEvidence.find(e => e.id === id));
 
@@ -342,18 +350,37 @@ export function Courtroom() {
           logEvent('cross_exam', ev.message || 'Cross-examination completed.', 'cross_exam');
         } else if (ev.type === 'verdict') {
           setStage(5);
-          setCurrentCase(prev => ({
-            ...prev,
-            decision: ev.decision || 'Inconclusive',
-            verdict: ev.reasoning || '',
-            verdictClaims: ev.verdictClaims || [],
-            unresolved: ev.unresolved || [],
-          }));
+          setCurrentCase(prev => {
+            if (!prev) return prev;
+            return {
+              ...prev,
+              decision: ev.decision || 'Inconclusive',
+              verdict: ev.reasoning || '',
+              verdictClaims: ev.verdictClaims || [],
+              unresolved: ev.unresolved || [],
+            };
+          });
           logEvent('verdict', ev.message || `Judicial verdict rendered: ${ev.decision}`, 'verdict');
+          setVerdictModalData({
+            decision: ev.decision || 'Inconclusive',
+            reasoning: ev.reasoning || '',
+            id: liveCaseDraft.id,
+            verifiedCount: (ev.verdictClaims || []).filter((c: any) => c.verification?.verified).length,
+            evidenceCount: ev.evidence?.length || (ev.count || 0),
+          });
+          setVerdictModalOpen(true);
         } else if (ev.type === 'complete' && ev.case) {
           setCurrentCase(ev.case);
           setRevisions(ev.case.revisions || []);
           logEvent('complete', ev.message || 'Trial concluded. Case ledger sealed.', 'complete');
+          setVerdictModalData({
+            decision: ev.case.decision,
+            reasoning: ev.case.verdict,
+            id: ev.case.id,
+            verifiedCount: (ev.case.verdictClaims || []).filter((c: any) => c.verification?.verified).length,
+            evidenceCount: ev.case.evidence.length,
+          });
+          setVerdictModalOpen(true);
         }
       });
 
@@ -364,9 +391,7 @@ export function Courtroom() {
     } catch (err: any) {
       setStage(null);
       setIsLoading(false);
-      setError(`Live deliberation stream failed (${err.message}). Loaded sample case.`);
-      setCurrentCase(sampleCase);
-      setRevisions(sampleCase.revisions);
+      setError(`Live deliberation stream failed: ${err.message}`);
     }
   };
 
@@ -450,21 +475,40 @@ export function Courtroom() {
               }));
               logEvent('re_argue', ev.message || 'Opening arguments re-evaluated with new evidence.', 'arguments');
             } else if (ev.type === 'verdict') {
-              setCurrentCase(prev => ({
-                ...prev,
-                decision: ev.decision || prev.decision,
-                verdict: ev.reasoning || prev.verdict,
-                verdictClaims: ev.verdictClaims || prev.verdictClaims,
-                unresolved: ev.unresolved || prev.unresolved,
-              }));
+              setCurrentCase(prev => {
+                if (!prev) return prev;
+                return {
+                  ...prev,
+                  decision: ev.decision || prev.decision,
+                  verdict: ev.reasoning || prev.verdict,
+                  verdictClaims: ev.verdictClaims || prev.verdictClaims,
+                  unresolved: ev.unresolved || prev.unresolved,
+                };
+              });
               if (ev.revisions) {
                 setRevisions(ev.revisions);
               }
               logEvent('verdict', ev.message || `Judicial verdict review complete: ${ev.decision}`, 'verdict');
+              setVerdictModalData({
+                decision: ev.decision || 'Inconclusive',
+                reasoning: ev.reasoning || '',
+                id: currentCase?.id || 'Case',
+                verifiedCount: (ev.verdictClaims || []).filter((c: any) => c.verification?.verified).length,
+                evidenceCount: ev.evidence?.length || (ev.count || 0),
+              });
+              setVerdictModalOpen(true);
             } else if (ev.type === 'complete' && ev.case) {
               setCurrentCase(ev.case);
               setRevisions(ev.case.revisions || []);
               logEvent('complete', ev.message || 'Reconsideration concluded.', 'complete');
+              setVerdictModalData({
+                decision: ev.case.decision,
+                reasoning: ev.case.verdict,
+                id: ev.case.id,
+                verifiedCount: (ev.case.verdictClaims || []).filter((c: any) => c.verification?.verified).length,
+                evidenceCount: ev.case.evidence.length,
+              });
+              setVerdictModalOpen(true);
             }
           }
         );
@@ -509,6 +553,7 @@ export function Courtroom() {
   };
 
   const download = (format: 'md' | 'json') => {
+    if (!currentCase) return;
     const exported = { ...currentCase, evidence: allEvidence, revisions };
     const content =
       format === 'json'
@@ -617,25 +662,44 @@ export function Courtroom() {
           )}
         </section>
 
-        <div className="case-meta">
-          <div className="meta-left">
-            <span className="case-id">{currentCase.id}</span>
-            <span>Adversarial research</span>
-            <span>
-              <span className={`status-dot ${isLoading ? 'bg-gold animate-ping' : ''}`} />
-              {isLoading ? 'Deliberation in progress' : 'Trial concluded'}
-            </span>
-            <span className="count flex items-center gap-1">
-              {isLive ? <Sparkles size={11} className="text-gold" /> : null}
-              {isLive ? 'LIVE NEBIUS TRIAL' : 'SAMPLE CASE'}
-            </span>
-          </div>
-          <div className="meta-right">
-            <Clock3 size={12} />
-            <span>{allClaims.length} claims examined</span>
-            <span>{allEvidence.length} sources</span>
-          </div>
-        </div>
+        {!currentCase && !isLoading ? (
+          <section className="py-24 text-center">
+            <div className="w-16 h-16 rounded-full border border-gold/40 bg-gold/5 mx-auto mb-5 flex items-center justify-center text-gold shadow-lg shadow-gold/10">
+              <Scale size={32} strokeWidth={1.5} />
+            </div>
+            <h3 className="font-serif text-2xl font-normal text-foreground mb-3">
+              The Courtroom is Ready
+            </h3>
+            <p className="text-xs text-muted-foreground max-w-lg mx-auto leading-relaxed mb-6">
+              Enter any research question above or select one of the presets to put a claim on trial.
+              Opposing counsel arguments, citations, and the judicial verdict will draft live before you.
+            </p>
+            <div className="inline-flex items-center gap-2 px-4 py-2 rounded-full border border-border bg-card/60 text-[11px] text-muted-foreground font-mono">
+              <Sparkles size={12} className="text-gold" />
+              Powered by Nebius token-factory reasoning & Tavily live search
+            </div>
+          </section>
+        ) : (
+          <>
+            <div className="case-meta">
+              <div className="meta-left">
+                <span className="case-id">{currentCase?.id}</span>
+                <span>Adversarial research</span>
+                <span>
+                  <span className={`status-dot ${isLoading ? 'bg-gold animate-ping' : ''}`} />
+                  {isLoading ? 'Deliberation in progress' : 'Trial concluded'}
+                </span>
+                <span className="count flex items-center gap-1">
+                  {isLive ? <Sparkles size={11} className="text-gold" /> : null}
+                  {isLive ? 'LIVE NEBIUS TRIAL' : 'SAMPLE CASE'}
+                </span>
+              </div>
+              <div className="meta-right">
+                <Clock3 size={12} />
+                <span>{allClaims.length} claims examined</span>
+                <span>{allEvidence.length} sources</span>
+              </div>
+            </div>
 
         {(isLoading || liveEvents.length > 0) && (
           <section className="live-stream-box" aria-live="polite">
@@ -716,18 +780,18 @@ export function Courtroom() {
         <div className="arguments">
           <Argument
             side="prosecution"
-            claims={currentCase.prosecution}
-            summary={currentCase.prosecutionSummary}
-            limitations={currentCase.prosecutionLimitations}
+            claims={currentCase?.prosecution || []}
+            summary={currentCase?.prosecutionSummary}
+            limitations={currentCase?.prosecutionLimitations}
             isLive={isLive}
             isLoading={isLoading}
             onSelect={selectSource}
           />
           <Argument
             side="defense"
-            claims={currentCase.defense}
-            summary={currentCase.defenseSummary}
-            limitations={currentCase.defenseLimitations}
+            claims={currentCase?.defense || []}
+            summary={currentCase?.defenseSummary}
+            limitations={currentCase?.defenseLimitations}
             isLive={isLive}
             isLoading={isLoading}
             onSelect={selectSource}
@@ -792,7 +856,7 @@ export function Courtroom() {
           </h2>
           <span>Evidence weighed. Not rhetoric.</span>
         </div>
-        <section className="verdict">
+        <section className="verdict" id="judicial-verdict">
           <div className="verdict-header">
             <div className="verdict-heading">
               <span className="judge-icon">
@@ -815,7 +879,7 @@ export function Courtroom() {
             </div>
           )}
 
-          {isLoading && !currentCase.verdict ? (
+          {isLoading && (!currentCase || !currentCase.verdict) ? (
             <div className="p-8 border border-dashed border-border/80 rounded-md bg-secondary/30 text-center my-4">
               <Scale className="animate-pulse mx-auto mb-3 text-gold" size={28} />
               <h4 className="font-serif text-base mb-1">Deliberation in progress</h4>
@@ -826,17 +890,17 @@ export function Courtroom() {
           ) : (
             <>
               <div className="decision">
-                <div className="decision-label">THE RULING · {currentCase.decision.toUpperCase()}</div>
-                <h4>{currentCase.decision}</h4>
-                <p>{currentCase.verdict}</p>
+                <div className="decision-label">THE RULING · {(currentCase?.decision || 'Inconclusive').toUpperCase()}</div>
+                <h4>{currentCase?.decision}</h4>
+                <p>{currentCase?.verdict}</p>
               </div>
 
               <div className="reasoning-title">Judicial reasoning</div>
-              <p className="reasoning">{currentCase.verdict}</p>
+              <p className="reasoning">{currentCase?.verdict}</p>
             </>
           )}
 
-          {currentCase.verdictClaims && currentCase.verdictClaims.length > 0 && (
+          {currentCase?.verdictClaims && currentCase.verdictClaims.length > 0 && (
             <table className="verdict-table">
               <thead>
                 <tr>
@@ -861,7 +925,7 @@ export function Courtroom() {
             </table>
           )}
 
-          {currentCase.unresolved && currentCase.unresolved.length > 0 && (
+          {currentCase?.unresolved && currentCase.unresolved.length > 0 && (
             <div className="unresolved">
               <TriangleAlert size={15} />
               <div>
@@ -1001,6 +1065,8 @@ export function Courtroom() {
               </div>
             ))}
         </section>
+        </>
+      )}
 
         <footer className="footer">
           <span>
@@ -1061,6 +1127,78 @@ export function Courtroom() {
             <Button variant="outline" onClick={() => download('json')}>
               <FileJson />Structured JSON
               <ArrowDownToLine className="ml-auto" />
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={verdictModalOpen} onOpenChange={setVerdictModalOpen}>
+        <DialogContent className="max-w-lg border-gold/40 bg-card p-6 shadow-2xl">
+          <div className="flex items-center gap-2 text-gold font-mono text-[10px] uppercase tracking-wider mb-1">
+            <span className="inline-block w-2 h-2 rounded-full bg-gold animate-ping" />
+            Judicial Ruling Announced
+          </div>
+          <DialogTitle className="font-display text-2xl font-normal flex items-center gap-3">
+            <Scale size={24} className="text-gold" />
+            The Verdict Has Been Reached
+          </DialogTitle>
+          <DialogDescription className="text-xs text-muted-foreground">
+            The court has concluded deliberations and verified all claims in the evidence ledger.
+          </DialogDescription>
+
+          {verdictModalData && (
+            <div className="space-y-4 my-2">
+              <div className="p-4 rounded-lg border border-border bg-background/80 text-center">
+                <div className="text-[10px] font-mono uppercase tracking-widest text-muted-foreground mb-1">
+                  Court Ruling
+                </div>
+                <div className="text-2xl font-display font-semibold text-gold tracking-wide">
+                  {verdictModalData.decision.toUpperCase()}
+                </div>
+              </div>
+
+              {verdictModalData.reasoning && (
+                <div className="p-3.5 rounded-md border-l-2 border-gold bg-secondary/30 text-xs text-foreground/90 leading-relaxed font-sans max-h-48 overflow-y-auto">
+                  <p className="font-medium text-gold mb-1 font-mono text-[10px]">JUDICIAL REASONING</p>
+                  {verdictModalData.reasoning}
+                </div>
+              )}
+
+              <div className="grid grid-cols-2 gap-2 text-center text-xs font-mono">
+                <div className="p-2.5 rounded border border-border bg-secondary/20">
+                  <div className="text-muted-foreground text-[10px]">Verified Claims</div>
+                  <div className="font-bold text-foreground text-sm mt-0.5">
+                    {verdictModalData.verifiedCount}
+                  </div>
+                </div>
+                <div className="p-2.5 rounded border border-border bg-secondary/20">
+                  <div className="text-muted-foreground text-[10px]">Evidence Sources</div>
+                  <div className="font-bold text-foreground text-sm mt-0.5">
+                    {verdictModalData.evidenceCount}
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
+
+          <div className="flex items-center justify-end gap-2 mt-2">
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => setVerdictModalOpen(false)}
+            >
+              Dismiss
+            </Button>
+            <Button
+              size="sm"
+              className="bg-gold text-primary-foreground hover:bg-gold/90 font-medium"
+              onClick={() => {
+                setVerdictModalOpen(false);
+                document.getElementById('judicial-verdict')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+              }}
+            >
+              <Gavel size={14} className="mr-1" />
+              Review Full Verdict
             </Button>
           </div>
         </DialogContent>
