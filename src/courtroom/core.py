@@ -81,7 +81,7 @@ class TavilySearch:
 
 
 class NebiusReasoner:
-    def __init__(self, key: str, model: str, base_url: str = 'https://api.studio.nebius.com/v1'):
+    def __init__(self, key: str, model: str, base_url: str = 'https://api.tokenfactory.nebius.com/v1'):
         self.key, self.model, self.base_url = key, model, base_url.rstrip('/')
 
     def complete(self, system: str, user: str) -> dict:
@@ -377,7 +377,9 @@ class Courtroom:
         norm = lambda v: re.sub(r'\s+', ' ', str(v.get('decision', ''))).strip().lower()
         changed = norm(previous) != norm(case.verdict)
         reason = str(case.verdict.get('change_explanation') or '').strip()
-        if not added:
+        if added:  # factual prefix computed by us; the model's explanation can be wrong about this
+            reason = (f"{len(added)} new source(s) added to the ledger ({', '.join(e.id for e in added)}). " + reason).strip()
+        else:
             reason = ('No new evidence was added to the ledger. ' + reason).strip()
         if changed and not added:
             reason += ' CAUTION: the decision changed without new evidence.'

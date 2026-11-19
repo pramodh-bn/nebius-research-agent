@@ -12,8 +12,8 @@ live = pytest.mark.skipif(not (os.getenv('RUN_LIVE') and os.getenv('NEBIUS_API_K
 def test_live_end_to_end_case():
     from courtroom.core import Courtroom, TavilySearch, NebiusReasoner
     court = Courtroom(TavilySearch(os.environ['TAVILY_API_KEY']), NebiusReasoner(
-        os.environ['NEBIUS_API_KEY'], os.getenv('NEBIUS_MODEL', 'meta-llama/Llama-3.3-70B-Instruct'),
-        os.getenv('NEBIUS_BASE_URL', 'https://api.studio.nebius.com/v1')))
+        os.environ['NEBIUS_API_KEY'], os.getenv('NEBIUS_MODEL', 'Qwen/Qwen3-235B-A22B-Instruct-2507'),
+        os.getenv('NEBIUS_BASE_URL', 'https://api.tokenfactory.nebius.com/v1')))
     case = court.file_case('Does intermittent fasting improve long-term weight loss compared with calorie restriction?')
     ids = {e.id for e in case.evidence}
     assert case.evidence and case.verdict.get('decision')

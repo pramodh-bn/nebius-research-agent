@@ -26,7 +26,7 @@ More detail: `docs/ARCHITECTURE.md`, `docs/BASELINE.md`, `docs/TEST_REPORT.md`.
 ## Required services
 | Requirement | How we use it |
 |---|---|
-| Nebius Token Factory (inference) | Model: `meta-llama/Llama-3.3-70B-Instruct` (configurable via `NEBIUS_MODEL`) — arguments, cross-examination, judge and claim verifier, via the OpenAI-compatible endpoint |
+| Nebius Token Factory (inference) | Model: `Qwen/Qwen3-235B-A22B-Instruct-2507` (configurable via `NEBIUS_MODEL`; the catalog changes, so check `GET /v1/models`) — arguments, cross-examination, judge and claim verifier, via the OpenAI-compatible endpoint |
 | Tavily (real-time web search) | Retrieves the evidence ledger; each result's URL and excerpt are stored and shown as clickable links in the UI and in verdict citations |
 
 ## Setup
@@ -43,14 +43,20 @@ RUN_LIVE=1 python -m pytest -q tests/test_live.py    # optional live smoke test 
 ```
 
 ## Example
-_TODO: paste a real run after a live test with API keys. No example is included yet because live Nebius/Tavily calls have not been run; nothing here is invented._
+Real run (2026-11-19, Nebius `Qwen/Qwen3-235B-A22B-Instruct-2507` + Tavily; 8 model calls, 8 sources):
+
+**Question:** Does intermittent fasting improve long-term weight loss compared with calorie restriction?
+**Verdict:** "Intermittent fasting does not consistently improve long-term weight loss compared to calorie restriction; the majority of evidence shows comparable outcomes." Every verdict claim cited ledger IDs and was assessed `supported` or `partially_supported` by the verifier (an LLM opinion, not proof). The judge kept the 4:3 fasting result (E3) as *contested* and listed three unresolved questions (protocol-specific benefits, adherence beyond one year, whether metabolic gains become durable weight loss).
+**Sources (excerpt):** E3 news.cuanschutz.edu · E4 hsph.harvard.edu · E5 nature.com · E7 pmc.ncbi.nlm.nih.gov · see all 8 in the UI ledger.
+**Challenge:** "Is there newer evidence from trials longer than 12 months?" → 4 new sources (E9–E12) added; verdict unchanged. Note: in this run the model's own explanation claimed no new evidence was added; the app now prefixes the revision reason with the factual count of new sources.
 
 ## Failure / insufficient-evidence case
 Verified in mocked tests (`docs/TEST_REPORT.md`); to be shown live in the demo:
 - Search returns nothing: the case is refused with "No retrievable evidence".
 - A claim cites an ID not in the ledger: the ID is removed and the claim shows as unsupported / not verified.
 - Verifier fails or no verdict claim is verified: verdict reads "Inconclusive (insufficient verified evidence)".
-- Submitted URL is private or fails to load: blocked, or results labeled as unverified search hints.
+- Submitted URL is private or fails to load: blocked, or results labeled as unverified search hints. Live check: `http://169.254.169.254/latest/` was blocked ("not a public internet address") and neither fetched nor searched.
+- Note: Tavily returns *something* even for nonsense queries, so live "no results" is rare; a nonsense query is not a reliable live failure demo. Use the blocked-URL case instead.
 
 ## Judging criteria map
 | Criterion | Weight | Where to look |

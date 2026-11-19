@@ -162,6 +162,7 @@ def test_changed_verdict_traceable_with_new_evidence():
     rev = case.revisions[0]
     assert rev['decision_changed'] and rev['before_decision'] == 'Inconclusive' and rev['after_decision'] == 'Supported'
     assert [e['id'] for e in rev['evidence_added']] == ['E2'] and rev['target_claim'] == 'Claim'
+    assert rev['reason'].startswith('1 new source(s) added to the ledger (E2).')
     assert 'meta-analysis' in rev['reason'] and 'CAUTION' not in rev['reason']
     assert rev['previous']['decision'] == 'Inconclusive' and rev['current']['decision'] == 'Supported'
 
