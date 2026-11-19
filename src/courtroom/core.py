@@ -340,6 +340,94 @@ class Courtroom:
             x.update(sources=c['sources'], verification=c['verification'], verified=c['verified'])
         return {'exchanges': exchanges}
 
+    def file_case_stream(self, question: str):
+        """Generator yielding deliberation events as evidence, arguments, cross-exam, and verdict are formed."""
+        if not question.strip():
+            raise ValueError('Enter a research question')
+        self._begin()
+        case = Case(question=question.strip())
+        yield {'type': 'phase', 'stage': 'search', 'message': f'Searching live web sources for evidence on "{case.question}"...'}
+        self.add_evidence(case, [f'{case.question} supporting evidence', f'{case.question} counterarguments evidence'])
+        if not case.evidence:
+            detail = f' ({case.warnings[0]})' if case.warnings else ''
+            raise ValueError(f'No retrievable evidence. Try a different question.{detail}')
+        yield {'type': 'evidence', 'evidence': case.evidence, 'count': len(case.evidence), 'message': f'Retrieved and admitted {len(case.evidence)} sources into the evidence ledger.'}
+
+        yield {'type': 'phase', 'stage': 'prosecution', 'message': 'Prosecution reviewing evidence ledger and drafting claims...'}
+        case.prosecution = self.argue(case, 'prosecution')
+        yield {'type': 'prosecution', 'prosecution': case.prosecution, 'message': 'Prosecution opening arguments submitted.'}
+
+        yield {'type': 'phase', 'stage': 'defense', 'message': 'Defense reviewing evidence ledger and drafting counterarguments...'}
+        case.defense = self.argue(case, 'defense')
+        yield {'type': 'defense', 'defense': case.defense, 'message': 'Defense opening arguments submitted.'}
+
+        yield {'type': 'phase', 'stage': 'cross_exam', 'message': 'Court conducting cross-examination between counsel...'}
+        case.cross_exam = self.cross_examine(case)
+        yield {'type': 'cross_exam', 'cross_exam': case.cross_exam, 'message': 'Cross-examination completed.'}
+
+        yield {'type': 'phase', 'stage': 'verdict', 'message': 'Impartial judge inspecting evidence ledger and deliberating...'}
+        case.verdict = self.judge(case)
+        case.calls_used = self._calls
+        yield {'type': 'verdict', 'verdict': case.verdict, 'message': f'Judicial verdict rendered: {case.verdict.get("decision", "Inconclusive")}'}
+
+        yield {'type': 'complete', 'case': case, 'message': 'Trial concluded. Case ledger sealed.'}
+
+    def challenge_stream(self, case: Case, question: str, source_url: str = '', target_claim: str = ''):
+        """Generator yielding deliberation events during an interactive challenge."""
+        question, source_url, target_claim = question.strip(), source_url.strip(), target_claim.strip()
+        if not question and not source_url:
+            raise ValueError('Enter a challenge or source URL')
+        if source_url and not source_url.startswith(('https://', 'http://')):
+            raise ValueError('Source must be an HTTP(S) URL')
+        self._begin()
+        previous = copy.deepcopy(case.verdict)
+        before_ids = {e.id for e in case.evidence}
+
+        if source_url:
+            yield {'type': 'phase', 'stage': 'url_check', 'message': f'Screening submitted URL: {source_url}...'}
+        url_status = self.admit_url(case, source_url) if source_url else 'none'
+        if source_url:
+            yield {'type': 'url_admitted', 'url_status': url_status, 'message': f'URL admission status: {url_status}'}
+
+        if question or target_claim:
+            yield {'type': 'phase', 'stage': 'followup_search', 'message': 'Conducting targeted follow-up retrieval...'}
+            self.add_evidence(case, [f'{case.question} {target_claim} {question}'.strip()])
+        added = [e for e in case.evidence if e.id not in before_ids]
+        yield {'type': 'evidence', 'evidence': case.evidence, 'added': added, 'count': len(case.evidence), 'message': f'{len(added)} new evidence source(s) added to the ledger.'}
+
+        yield {'type': 'phase', 'stage': 're_argue', 'message': 'Counsel re-evaluating arguments in light of new evidence...'}
+        case.prosecution = self.argue(case, 'prosecution')
+        case.defense = self.argue(case, 'defense')
+        yield {'type': 'arguments_updated', 'prosecution': case.prosecution, 'defense': case.defense, 'message': 'Opening arguments re-evaluated.'}
+
+        yield {'type': 'phase', 'stage': 're_judge', 'message': 'Judge reviewing challenge against updated evidence ledger...'}
+        brief = '\n'.join(x for x in (f'Challenged claim: {target_claim}' if target_claim else '', question,
+                                      f'Submitted URL: {source_url} (status: {url_status})' if source_url else '') if x)
+        case.verdict = self.judge(case, brief)
+
+        norm = lambda v: re.sub(r'\s+', ' ', str(v.get('decision', ''))).strip().lower()
+        changed = norm(previous) != norm(case.verdict)
+        reason = str(case.verdict.get('change_explanation') or '').strip()
+        if added:
+            reason = (f"{len(added)} new source(s) added to the ledger ({', '.join(e.id for e in added)}). " + reason).strip()
+        else:
+            reason = ('No new evidence was added to the ledger. ' + reason).strip()
+        if changed and not added:
+            reason += ' CAUTION: the decision changed without new evidence.'
+        count = lambda v: sum(1 for c in v.get('claims', []) if c.get('verified'))
+        case.revisions.append({
+            'challenge': question, 'target_claim': target_claim, 'source_url': source_url, 'url_status': url_status,
+            'evidence_added': [{'id': e.id, 'title': e.title, 'url': e.url, 'origin': e.metadata.get('origin', 'search'),
+                                'suspicious': e.suspicious} for e in added],
+            'decision_changed': changed, 'before_decision': previous.get('decision'),
+            'after_decision': case.verdict.get('decision'), 'reason': reason or ('Decision changed.' if changed else 'Decision unchanged.'),
+            'verified_claims_before': count(previous), 'verified_claims_after': count(case.verdict),
+            'previous': previous, 'current': copy.deepcopy(case.verdict)})
+        case.calls_used = self._calls
+
+        yield {'type': 'verdict', 'verdict': case.verdict, 'revisions': case.revisions, 'message': f'Judicial review complete: {case.verdict.get("decision")}'}
+        yield {'type': 'complete', 'case': case, 'message': 'Reconsideration concluded.'}
+
     def file_case(self, question: str) -> Case:
         if not question.strip():
             raise ValueError('Enter a research question')

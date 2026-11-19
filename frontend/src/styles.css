@@ -174,6 +174,78 @@
 .diff-pills span { background: var(--secondary); border: 1px solid var(--border); padding: 6px 9px; border-radius: 4px; font-family: var(--font-mono); font-size: 8px; }
 .footer { display: flex; justify-content: space-between; gap: 15px; padding: 20px 0 25px; border-top: 1px solid var(--border); color: var(--muted-foreground); font-size: 9px; }
 .footer span { display: flex; align-items: center; gap: 6px; }
+.live-stream-box {
+  background: color-mix(in oklch, var(--card) 95%, var(--primary) 5%);
+  border: 1px solid color-mix(in oklch, var(--gold) 35%, var(--border));
+  border-radius: 8px;
+  padding: 16px 20px;
+  margin: 18px 0;
+  box-shadow: 0 4px 20px rgba(0,0,0,0.25);
+}
+.live-stream-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  border-bottom: 1px solid var(--border);
+  padding-bottom: 10px;
+  margin-bottom: 12px;
+}
+.live-stream-title {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 1.5px;
+  text-transform: uppercase;
+  color: var(--gold);
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.live-pulse {
+  display: inline-block;
+  width: 7px;
+  height: 7px;
+  background-color: var(--gold);
+  border-radius: 50%;
+  box-shadow: 0 0 8px var(--gold);
+  animation: pulse-dot 1.5s infinite ease-in-out;
+}
+@keyframes pulse-dot {
+  0%, 100% { opacity: 1; transform: scale(1); }
+  50% { opacity: 0.3; transform: scale(0.85); }
+}
+.live-stream-stage {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  padding: 2px 8px;
+  border-radius: 4px;
+  background: var(--accent);
+  color: var(--foreground);
+  border: 1px solid var(--border);
+}
+.live-stream-events {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  max-height: 200px;
+  overflow-y: auto;
+  padding-right: 4px;
+}
+.live-stream-event {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  font-size: 11px;
+  color: var(--foreground);
+  animation: enter 0.3s ease;
+}
+.live-stream-time {
+  font-family: var(--font-mono);
+  font-size: 9px;
+  color: var(--muted-foreground);
+  white-space: nowrap;
+  padding-top: 2px;
+}
 .ledger-sheet { width: 100% !important; max-width: 590px !important; overflow-y: auto; padding: 28px !important; }
 .ledger-filters { display: flex; flex-wrap: wrap; gap: 5px; padding: 21px 0 15px; }
 .ledger-filters button { font-size: 10px; }

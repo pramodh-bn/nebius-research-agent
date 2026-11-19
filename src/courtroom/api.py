@@ -3,6 +3,7 @@
 from __future__ import annotations
 import os
 import sys
+import json
 from pathlib import Path
 from typing import Any
 from urllib.parse import urlsplit
@@ -10,6 +11,7 @@ from urllib.parse import urlsplit
 from dotenv import load_dotenv
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 
 # Add src to path
@@ -244,6 +246,98 @@ def api_file_case(req: FileCaseRequest):
         raise HTTPException(status_code=500, detail=f"Unexpected error: {exc}")
 
 
+def generate_case_stream(court: Courtroom, question: str):
+    try:
+        for event in court.file_case_stream(question):
+            payload = dict(event)
+            if payload.get("type") == "evidence":
+                payload["evidence"] = [format_evidence(e) for e in payload["evidence"]]
+                if "added" in payload:
+                    payload["added"] = [format_evidence(e) for e in payload["added"]]
+            elif payload.get("type") == "prosecution":
+                payload["claims"] = format_claims(payload["prosecution"].get("claims", []), "P")
+                payload["summary"] = payload["prosecution"].get("summary", "")
+                payload["limitations"] = payload["prosecution"].get("limitations", [])
+            elif payload.get("type") == "defense":
+                payload["claims"] = format_claims(payload["defense"].get("claims", []), "D")
+                payload["summary"] = payload["defense"].get("summary", "")
+                payload["limitations"] = payload["defense"].get("limitations", [])
+            elif payload.get("type") == "arguments_updated":
+                payload["prosecutionClaims"] = format_claims(payload["prosecution"].get("claims", []), "P")
+                payload["defenseClaims"] = format_claims(payload["defense"].get("claims", []), "D")
+            elif payload.get("type") == "cross_exam":
+                raw_ex = payload["cross_exam"].get("exchanges", [])
+                payload["exchanges"] = [
+                    {
+                        "side": x.get("asker", "prosecution").capitalize(),
+                        "question": x.get("question", ""),
+                        "answer": x.get("answer", ""),
+                        "ids": x.get("sources", []),
+                        "verified": x.get("verified", False),
+                    }
+                    for x in raw_ex
+                ]
+            elif payload.get("type") == "verdict":
+                v = payload["verdict"]
+                payload["verdictClaims"] = format_claims(v.get("claims", []), "V")
+                payload["decision"] = v.get("decision", "Inconclusive")
+                payload["reasoning"] = v.get("reasoning", "")
+                payload["unresolved"] = v.get("unresolved", [])
+                if "revisions" in payload:
+                    payload["revisions"] = format_revisions(payload["revisions"])
+            elif payload.get("type") == "complete":
+                payload["case"] = serialize_case_for_ui(payload["case"])
+
+            yield f"data: {json.dumps(payload)}\n\n"
+    except Exception as exc:
+        yield f"data: {json.dumps({'type': 'error', 'message': str(exc)})}\n\n"
+
+
+def generate_challenge_stream(court: Courtroom, case: Case, challenge: str, source_url: str = "", target_claim: str = ""):
+    try:
+        for event in court.challenge_stream(
+            case,
+            question=challenge,
+            source_url=source_url,
+            target_claim=target_claim,
+        ):
+            payload = dict(event)
+            if payload.get("type") == "evidence":
+                payload["evidence"] = [format_evidence(e) for e in payload["evidence"]]
+                if "added" in payload:
+                    payload["added"] = [format_evidence(e) for e in payload["added"]]
+            elif payload.get("type") == "arguments_updated":
+                payload["prosecutionClaims"] = format_claims(payload["prosecution"].get("claims", []), "P")
+                payload["defenseClaims"] = format_claims(payload["defense"].get("claims", []), "D")
+                payload["prosecutionSummary"] = payload["prosecution"].get("summary", "")
+                payload["defenseSummary"] = payload["defense"].get("summary", "")
+            elif payload.get("type") == "verdict":
+                v = payload["verdict"]
+                payload["verdictClaims"] = format_claims(v.get("claims", []), "V")
+                payload["decision"] = v.get("decision", "Inconclusive")
+                payload["reasoning"] = v.get("reasoning", "")
+                payload["unresolved"] = v.get("unresolved", [])
+                if "revisions" in payload:
+                    payload["revisions"] = format_revisions(payload["revisions"])
+            elif payload.get("type") == "complete":
+                payload["case"] = serialize_case_for_ui(payload["case"])
+
+            yield f"data: {json.dumps(payload)}\n\n"
+    except Exception as exc:
+        yield f"data: {json.dumps({'type': 'error', 'message': str(exc)})}\n\n"
+
+
+@app.post("/api/case/stream")
+def api_file_case_stream(req: FileCaseRequest):
+    if not req.question.strip():
+        raise HTTPException(status_code=400, detail="Research question cannot be empty")
+    court = get_courtroom()
+    return StreamingResponse(
+        generate_case_stream(court, req.question.strip()),
+        media_type="text/event-stream"
+    )
+
+
 @app.post("/api/challenge")
 def api_challenge(req: ChallengeRequest):
     if not req.challenge.strip() and not req.source_url.strip():
@@ -264,3 +358,21 @@ def api_challenge(req: ChallengeRequest):
         raise HTTPException(status_code=400, detail=str(exc))
     except Exception as exc:
         raise HTTPException(status_code=500, detail=f"Unexpected error: {exc}")
+
+
+@app.post("/api/challenge/stream")
+def api_challenge_stream(req: ChallengeRequest):
+    if not req.challenge.strip() and not req.source_url.strip():
+        raise HTTPException(status_code=400, detail="Challenge text or source URL required")
+    court = get_courtroom()
+    case = deserialize_case(req.case_raw)
+    return StreamingResponse(
+        generate_challenge_stream(
+            court,
+            case,
+            challenge=req.challenge,
+            source_url=req.source_url,
+            target_claim=req.target_claim,
+        ),
+        media_type="text/event-stream"
+    )
