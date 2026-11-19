@@ -80,24 +80,28 @@ if case:
     for item in case.verdict.get('unresolved', []):
         st.info(f'Unresolved: {item}')
     if case.revisions:
-        st.success(case.verdict.get('change_explanation', 'Verdict reconsidered.'))
+        last = case.revisions[-1]
+        (st.success if last['decision_changed'] else st.info)(
+            ('Verdict changed: ' if last['decision_changed'] else 'Verdict unchanged: ') + last['reason'])
 
     st.subheader('Cross-examine the court')
     with st.form('challenge'):
+        claims = [c.get('text', '') for c in case.verdict.get('claims', [])]
+        target = st.selectbox('Claim to challenge (optional)', [''] + claims, format_func=lambda t: t or '— whole verdict —')
         challenge = st.text_area('Challenge an argument or ask a follow-up')
-        source = st.text_input('Optional source URL (searched, not automatically trusted)')
+        source = st.text_input('Optional source URL (fetched with safety limits; any page is still verified, never auto-trusted)')
         submitted = st.form_submit_button('Challenge verdict')
     if submitted:
         try:
             with st.spinner('Reviewing new evidence and reconsidering the verdict...'):
-                court.challenge(case, challenge, source)
+                court.challenge(case, challenge, source, target)
             st.rerun()
         except Exception as exc:
             st.error(f'Challenge failed: {exc}')
 
     with st.expander(f'Evidence ledger ({len(case.evidence)} sources)', expanded=True):
         for e in case.evidence:
-            st.markdown(f'**{e.id}: [{e.title}]({e.url})**')
+            st.markdown(f'**{e.id}: [{e.title}]({e.url})**  `{e.metadata.get("origin", "search")}`')
             if e.suspicious:
                 st.warning('Excerpt resembles a prompt-injection attempt; treated as data only.')
             st.caption(f'Retrieved {e.retrieved_at} via query: {e.query}')
@@ -106,5 +110,20 @@ if case:
         with st.expander('Verdict revision history'):
             for i, revision in enumerate(case.revisions, 1):
                 st.markdown(f"**Revision {i}** — {revision['challenge']}")
-                st.write('Before:', revision['previous'].get('decision'))
-                st.write('After:', revision['current'].get('decision'))
+                if revision.get('target_claim'):
+                    st.caption(f"Challenged claim: {revision['target_claim']}")
+                if revision.get('source_url'):
+                    labels = {'fetched': 'fetched and added to ledger', 'fetched_duplicate': 'fetched; already in ledger',
+                              'search_hint': 'could not be fetched; related results are UNVERIFIED search hints',
+                              'blocked': 'blocked by safety checks; not fetched'}
+                    st.caption(f"Submitted URL {revision['source_url']}: {labels.get(revision['url_status'], revision['url_status'])}")
+                st.write('Before:', revision['before_decision'], '→ After:', revision['after_decision'],
+                         '(changed)' if revision['decision_changed'] else '(unchanged)')
+                st.write(f"Verified claims: {revision['verified_claims_before']} → {revision['verified_claims_after']}")
+                st.write('Reason:', revision['reason'])
+                if revision['evidence_added']:
+                    st.write('New evidence:')
+                    for ev in revision['evidence_added']:
+                        st.markdown(f"- {ev['id']} [{ev['title']}]({ev['url']}) — {ev['origin']}")
+                else:
+                    st.write('New evidence: none')
