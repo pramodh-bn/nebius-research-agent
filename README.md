@@ -36,7 +36,8 @@ cd <repo>
 python -m venv .venv && source .venv/bin/activate   # Windows: .venv\Scripts\activate
 pip install -r requirements.txt
 cp .env.example .env   # add your keys — never commit them
-streamlit run app.py                                 # Research Courtroom UI
+python run_app.py                                    # Full stack: React Web UI (:3000) + FastAPI (:8000)
+streamlit run app.py                                 # Lightweight Streamlit UI (:8501)
 python src/agent.py "Your research question here"    # original starter CLI
 python -m pytest -q                                  # mocked tests (no keys needed)
 RUN_LIVE=1 python -m pytest -q tests/test_live.py    # optional live smoke test (needs both keys)

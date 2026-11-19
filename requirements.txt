@@ -5,3 +5,5 @@ streamlit>=1.38,<2
 requests>=2.31,<3
 pydantic>=2,<3
 pytest>=8,<10
+fastapi>=0.110
+uvicorn>=0.30
