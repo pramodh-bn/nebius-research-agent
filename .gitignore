@@ -7,3 +7,7 @@ __pycache__/
 
 demo_out/
 *.log
+.tools/
+frontend/node_modules/
+frontend/dist/
+frontend/.nitro/
