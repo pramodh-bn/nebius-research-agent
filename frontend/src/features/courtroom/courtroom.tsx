@@ -59,9 +59,9 @@ function Status({ claim }: { claim: Claim }) {
 
 function VerificationPill({ claim, isLive }: { claim: Claim; isLive: boolean }) {
   return (
-    <span className="verification" title={claim.verification.note}>
+    <span className="verification" title={claim.verification?.note || 'Assessed against evidence ledger'}>
       <ShieldCheck size={10} />
-      {claim.verification.verified ? 'VERIFIED' : 'NOT VERIFIED'} · {claim.verification.assessment} · {isLive ? 'Nebius LLM verifier' : 'sample'}
+      {claim.verification?.verified ? 'VERIFIED' : 'NOT VERIFIED'} · {claim.verification?.assessment || claim.status} · {isLive ? 'Nebius LLM verifier' : 'sample'}
     </span>
   );
 }
@@ -107,17 +107,27 @@ function Argument({
     ? 'Protocol heterogeneity; limited evidence beyond 12 months. Adherence benefits are not universal.'
     : 'Average outcomes can obscure individual responses. Newer 4:3 evidence shows a protocol-specific benefit.';
 
+  const displaySummary = summary && summary.trim().length > 0
+    ? summary
+    : (isLive
+        ? (isPro ? 'Affirmative position grounded in retrieved ledger evidence.' : 'Counterarguments and critical boundaries grounded in retrieved ledger evidence.')
+        : defaultSummary);
+
+  const displayLimits = limitations && limitations.length > 0
+    ? limitations.join(' · ')
+    : (isLive ? 'Heterogeneity across studies; sample sizes; potential confounding factors.' : defaultLimits);
+
   return (
     <article className={`argument ${side}`}>
       <div className="argument-head">
         <span className="role-icon">{isPro ? <Gavel size={19} /> : <Shield size={19} />}</span>
         <div>
           <h3>{isPro ? 'Prosecution' : 'Defense'}</h3>
-          <p>{isPro ? 'The case for the proposition' : 'The counterarguments & limits'}</p>
+          <p>{isPro ? 'The affirmative case' : 'Counterarguments & limitations'}</p>
         </div>
         <span className="role-label">{isPro ? 'ARGUING FOR' : 'ARGUING AGAINST'}</span>
       </div>
-      <p className="argument-summary">{summary || defaultSummary}</p>
+      <p className="argument-summary">{displaySummary}</p>
       <div className="claim-list">
         {claims.map((claim, index) => (
           <div className="claim-item" key={claim.id || index}>
@@ -135,7 +145,7 @@ function Argument({
       </div>
       <div className="limitations">
         <strong><Info size={11} /> Limitations</strong>
-        {limitations && limitations.length > 0 ? limitations.join(' · ') : defaultLimits}
+        {displayLimits}
       </div>
     </article>
   );
@@ -202,7 +212,9 @@ export function Courtroom() {
   const allClaims = [...currentCase.prosecution, ...currentCase.defense];
   const allEvidence = [...currentCase.evidence, ...blockedSources];
   const exchanges: Exchange[] =
-    currentCase.exchanges && currentCase.exchanges.length > 0 ? currentCase.exchanges : defaultExchanges;
+    currentCase.exchanges && currentCase.exchanges.length > 0
+      ? currentCase.exchanges
+      : (isLive ? [] : defaultExchanges);
 
   const selectSource = (id: string) => setSelectedSource(allEvidence.find(e => e.id === id));
 
@@ -276,7 +288,7 @@ export function Courtroom() {
     }
 
     setIsLoading(true);
-    setNotice('Reviewing challenge and updating evidence ledger...');
+    setNotice('Reviewing challenge, re-examining arguments with new evidence...');
 
     try {
       if (currentCase._raw) {
@@ -292,13 +304,13 @@ export function Courtroom() {
         setHistoryOpen(true);
         setShowRevisionDiff(true);
         const lastRev = updated.revisions?.[updated.revisions.length - 1];
-        setNotice(lastRev?.explanation || 'Verdict reconsidered with new evidence.');
+        setNotice(lastRev?.explanation || 'Verdict and arguments reconsidered with new evidence.');
         setChallenge('');
         setSourceUrl('');
       } else {
         // Fallback sample mode simulation
         setIsLoading(false);
-        const count = allClaims.filter(c => c.verification.verified).length;
+        const count = allClaims.filter(c => c.verification?.verified).length;
         const revision: Revision = {
           id: revisions.length + 1,
           timestamp: new Date().toISOString(),
@@ -489,6 +501,11 @@ export function Courtroom() {
             <span className="number">01</span>Opening arguments
           </h2>
           <span>Two perspectives. One evidence standard.</span>
+          {revisions.length > 0 && isLive && (
+            <span className="count text-gold ml-auto flex items-center gap-1">
+              <Sparkles size={11} /> Re-evaluated with Challenge #{revisions.length} Evidence
+            </span>
+          )}
         </div>
         <div className="arguments">
           <Argument
@@ -526,24 +543,30 @@ export function Courtroom() {
           </Button>
           {crossOpen && (
             <div className="thread">
-              {exchanges.map((exchange, index) => (
-                <div className="exchange" key={index}>
-                  <span className="claim-number">EXCHANGE 0{index + 1}</span>
-                  <p>
-                    <strong className={exchange.side === 'Prosecution' ? 'text-prosecution' : 'text-defense'}>
-                      {exchange.side} asks
-                    </strong>{' '}
-                    · {exchange.question}
-                  </p>
-                  <p>
-                    <strong className={exchange.side === 'Prosecution' ? 'text-defense' : 'text-prosecution'}>
-                      {exchange.side === 'Prosecution' ? 'Defense' : 'Prosecution'} responds
-                    </strong>{' '}
-                    · {exchange.answer}
-                  </p>
-                  <Citations ids={exchange.ids} onSelect={selectSource} />
+              {exchanges.length === 0 ? (
+                <div className="notice text-xs text-muted-foreground">
+                  Cross-examination will appear once counsel presents their preliminary examination.
                 </div>
-              ))}
+              ) : (
+                exchanges.map((exchange, index) => (
+                  <div className="exchange" key={index}>
+                    <span className="claim-number">EXCHANGE 0{index + 1}</span>
+                    <p>
+                      <strong className={exchange.side === 'Prosecution' ? 'text-prosecution' : 'text-defense'}>
+                        {exchange.side} asks
+                      </strong>{' '}
+                      · {exchange.question}
+                    </p>
+                    <p>
+                      <strong className={exchange.side === 'Prosecution' ? 'text-defense' : 'text-prosecution'}>
+                        {exchange.side === 'Prosecution' ? 'Defense' : 'Prosecution'} responds
+                      </strong>{' '}
+                      · {exchange.answer}
+                    </p>
+                    <Citations ids={exchange.ids} onSelect={selectSource} />
+                  </div>
+                ))
+              )}
             </div>
           )}
         </section>
@@ -624,7 +647,7 @@ export function Courtroom() {
           <div className="flex justify-between items-center gap-3 mt-4 text-muted-foreground text-[9px]">
             <span className="flex items-center gap-1">
               <CheckCheck size={12} />
-              {allClaims.filter(c => c.verification.verified).length} verified claims
+              {allClaims.filter(c => c.verification?.verified).length} verified claims
             </span>
             {revisions.length > 0 && (
               <Button
