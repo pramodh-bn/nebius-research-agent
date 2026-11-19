@@ -30,7 +30,7 @@ import { Dialog, DialogContent, DialogDescription, DialogTitle } from '@/compone
 import scales from '@/assets/courtroom-scales.png.asset.json';
 import { sampleCase, sampleQuestion } from './sample-case';
 import { screenSourceUrl } from './safety';
-import { fileCaseApi, challengeCaseApi } from './api-client';
+import { fileCaseStreamApi, challengeCaseStreamApi, type StreamEvent } from './api-client';
 import type { Claim, Evidence, Revision, Case, Exchange } from './types';
 
 const stages = ['Evidence search', 'Prosecution', 'Defense', 'Cross-examination', 'Verification', 'Judicial verdict'];
@@ -90,6 +90,7 @@ function Argument({
   summary,
   limitations,
   isLive,
+  isLoading,
   onSelect,
 }: {
   side: 'prosecution' | 'defense';
@@ -97,6 +98,7 @@ function Argument({
   summary?: string;
   limitations?: string[];
   isLive: boolean;
+  isLoading?: boolean;
   onSelect: (id: string) => void;
 }) {
   const isPro = side === 'prosecution';
@@ -107,15 +109,21 @@ function Argument({
     ? 'Protocol heterogeneity; limited evidence beyond 12 months. Adherence benefits are not universal.'
     : 'Average outcomes can obscure individual responses. Newer 4:3 evidence shows a protocol-specific benefit.';
 
+  const isDrafting = isLoading && claims.length === 0;
+
   const displaySummary = summary && summary.trim().length > 0
     ? summary
-    : (isLive
-        ? (isPro ? 'Affirmative position grounded in retrieved ledger evidence.' : 'Counterarguments and critical boundaries grounded in retrieved ledger evidence.')
-        : defaultSummary);
+    : (isDrafting
+        ? (isPro ? 'Reviewing admitted evidence and formulating affirmative claims...' : 'Evaluating evidence boundaries and formulating counterarguments...')
+        : (isLive
+            ? (isPro ? 'Affirmative position grounded in retrieved ledger evidence.' : 'Counterarguments and critical boundaries grounded in retrieved ledger evidence.')
+            : defaultSummary));
 
   const displayLimits = limitations && limitations.length > 0
     ? limitations.join(' · ')
-    : (isLive ? 'Heterogeneity across studies; sample sizes; potential confounding factors.' : defaultLimits);
+    : (isDrafting
+        ? 'Awaiting argument completion'
+        : (isLive ? 'Heterogeneity across studies; sample sizes; potential confounding factors.' : defaultLimits));
 
   return (
     <article className={`argument ${side}`}>
@@ -125,23 +133,40 @@ function Argument({
           <h3>{isPro ? 'Prosecution' : 'Defense'}</h3>
           <p>{isPro ? 'The affirmative case' : 'Counterarguments & limitations'}</p>
         </div>
-        <span className="role-label">{isPro ? 'ARGUING FOR' : 'ARGUING AGAINST'}</span>
+        <span className="role-label">
+          {isDrafting ? 'DRAFTING CLAIMS' : (isPro ? 'ARGUING FOR' : 'ARGUING AGAINST')}
+        </span>
       </div>
       <p className="argument-summary">{displaySummary}</p>
       <div className="claim-list">
-        {claims.map((claim, index) => (
-          <div className="claim-item" key={claim.id || index}>
-            <div className="claim-top">
-              <span className="claim-number">CLAIM 0{index + 1}</span>
-              <Status claim={claim} />
-            </div>
-            <p>{claim.text}</p>
-            <div className="claim-bottom">
-              <VerificationPill claim={claim} isLive={isLive} />
-              <Citations ids={claim.evidenceIds} onSelect={onSelect} />
-            </div>
+        {isDrafting ? (
+          <div className="p-5 border border-dashed border-border/80 rounded-md bg-secondary/30 text-center my-3">
+            <LoaderCircle className="animate-spin mx-auto mb-2 text-gold" size={18} />
+            <p className="text-xs text-muted-foreground font-mono">
+              {isPro
+                ? 'Prosecution reviewing evidence ledger and drafting claims...'
+                : 'Defense awaiting evidence analysis to formulate counterarguments...'}
+            </p>
           </div>
-        ))}
+        ) : claims.length === 0 ? (
+          <div className="p-4 border border-dashed border-border/50 rounded-md bg-secondary/10 text-center my-2 text-xs text-muted-foreground font-mono">
+            No claims filed yet.
+          </div>
+        ) : (
+          claims.map((claim, index) => (
+            <div className="claim-item" key={claim.id || index}>
+              <div className="claim-top">
+                <span className="claim-number">CLAIM 0{index + 1}</span>
+                <Status claim={claim} />
+              </div>
+              <p>{claim.text}</p>
+              <div className="claim-bottom">
+                <VerificationPill claim={claim} isLive={isLive} />
+                <Citations ids={claim.evidenceIds} onSelect={onSelect} />
+              </div>
+            </div>
+          ))
+        )}
       </div>
       <div className="limitations">
         <strong><Info size={11} /> Limitations</strong>
@@ -187,6 +212,14 @@ function EvidenceItem({ item }: { item: Evidence }) {
   );
 }
 
+interface LiveFeedEvent {
+  id: string;
+  timestamp: string;
+  stage: string;
+  message: string;
+  type: string;
+}
+
 export function Courtroom() {
   const [currentCase, setCurrentCase] = useState<Case>(sampleCase);
   const [question, setQuestion] = useState(sampleQuestion);
@@ -207,6 +240,8 @@ export function Courtroom() {
   const [filingNotice, setFilingNotice] = useState('');
   const [showRevisionDiff, setShowRevisionDiff] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
+  const [liveEvents, setLiveEvents] = useState<LiveFeedEvent[]>([]);
+  const [currentStageName, setCurrentStageName] = useState<string>('');
 
   const isLive = currentCase.mode === 'live';
   const allClaims = [...currentCase.prosecution, ...currentCase.defense];
@@ -223,29 +258,113 @@ export function Courtroom() {
     if (!question.trim()) return;
     setError('');
     setNotice('');
-    setFilingNotice('Deliberating: searching Tavily, arguing prosecution & defense, verifying claims with Nebius...');
+    setFilingNotice('Court is now in session. Deliberation stream initiated...');
     setIsLoading(true);
-
-    let stageIdx = 0;
+    setLiveEvents([]);
+    setCurrentStageName('Initiating Trial');
     setStage(0);
-    const interval = setInterval(() => {
-      stageIdx = (stageIdx + 1) % stages.length;
-      setStage(stageIdx);
-    }, 2800);
+
+    const logEvent = (stageKey: string, message: string, type: string) => {
+      const timeStr = new Date().toTimeString().split(' ')[0];
+      setLiveEvents(prev => [
+        ...prev,
+        { id: `${Date.now()}-${Math.random()}`, timestamp: timeStr, stage: stageKey, message, type }
+      ]);
+    };
+
+    // Blank dynamic case draft for live document drafting
+    const liveCaseDraft: Case = {
+      id: 'RC-' + String(Math.floor(1000 + Math.random() * 9000)),
+      question: question.trim(),
+      mode: 'live',
+      decision: 'Deliberating...',
+      verdict: '',
+      prosecution: [],
+      defense: [],
+      verdictClaims: [],
+      prosecutionSummary: '',
+      defenseSummary: '',
+      prosecutionLimitations: [],
+      defenseLimitations: [],
+      unresolved: [],
+      exchanges: [],
+      evidence: [],
+      revisions: [],
+      warnings: [],
+      evidenceWarning: '',
+      callsUsed: 0,
+    };
+    setCurrentCase(liveCaseDraft);
+    logEvent('search', `Filing research case: "${question.trim()}"`, 'phase');
 
     try {
-      const liveCase = await fileCaseApi(question.trim());
-      clearInterval(interval);
+      const finalCase = await fileCaseStreamApi(question.trim(), (ev: StreamEvent) => {
+        if (ev.type === 'phase') {
+          setCurrentStageName(ev.message || ev.stage || '');
+          logEvent(ev.stage || 'phase', ev.message || 'Processing...', 'phase');
+          if (ev.stage === 'search') setStage(0);
+          else if (ev.stage === 'prosecution') setStage(1);
+          else if (ev.stage === 'defense') setStage(2);
+          else if (ev.stage === 'cross_exam') setStage(3);
+          else if (ev.stage === 'verdict') setStage(4);
+        } else if (ev.type === 'evidence') {
+          if (ev.evidence) {
+            setCurrentCase(prev => ({
+              ...prev,
+              evidence: ev.evidence || [],
+            }));
+          }
+          logEvent('evidence', ev.message || `Admitted ${ev.count} sources into evidence ledger.`, 'evidence');
+        } else if (ev.type === 'prosecution') {
+          setStage(1);
+          setCurrentCase(prev => ({
+            ...prev,
+            prosecution: ev.claims || [],
+            prosecutionSummary: ev.summary || '',
+            prosecutionLimitations: ev.limitations || [],
+          }));
+          logEvent('prosecution', ev.message || 'Prosecution opening arguments submitted.', 'prosecution');
+        } else if (ev.type === 'defense') {
+          setStage(2);
+          setCurrentCase(prev => ({
+            ...prev,
+            defense: ev.claims || [],
+            defenseSummary: ev.summary || '',
+            defenseLimitations: ev.limitations || [],
+          }));
+          logEvent('defense', ev.message || 'Defense opening arguments submitted.', 'defense');
+        } else if (ev.type === 'cross_exam') {
+          setStage(3);
+          setCurrentCase(prev => ({
+            ...prev,
+            exchanges: ev.exchanges || [],
+          }));
+          logEvent('cross_exam', ev.message || 'Cross-examination completed.', 'cross_exam');
+        } else if (ev.type === 'verdict') {
+          setStage(5);
+          setCurrentCase(prev => ({
+            ...prev,
+            decision: ev.decision || 'Inconclusive',
+            verdict: ev.reasoning || '',
+            verdictClaims: ev.verdictClaims || [],
+            unresolved: ev.unresolved || [],
+          }));
+          logEvent('verdict', ev.message || `Judicial verdict rendered: ${ev.decision}`, 'verdict');
+        } else if (ev.type === 'complete' && ev.case) {
+          setCurrentCase(ev.case);
+          setRevisions(ev.case.revisions || []);
+          logEvent('complete', ev.message || 'Trial concluded. Case ledger sealed.', 'complete');
+        }
+      });
+
       setStage(null);
       setIsLoading(false);
-      setCurrentCase(liveCase);
-      setRevisions(liveCase.revisions || []);
-      setFilingNotice(`Trial concluded · ${liveCase.evidence.length} sources retrieved, all claims verified by Nebius.`);
+      setCurrentStageName('Trial Concluded');
+      setFilingNotice(`Trial concluded · ${finalCase.evidence.length} sources retrieved, claims verified by Nebius.`);
     } catch (err: any) {
-      clearInterval(interval);
       setStage(null);
       setIsLoading(false);
-      setError(`Live backend unavailable (${err.message}). Loaded sample case.`);
+      setError(`Live deliberation stream failed (${err.message}). Loaded sample case.`);
       setCurrentCase(sampleCase);
       setRevisions(sampleCase.revisions);
     }
@@ -288,17 +407,69 @@ export function Courtroom() {
     }
 
     setIsLoading(true);
+    setCurrentStageName('Reviewing Challenge');
     setNotice('Reviewing challenge, re-examining arguments with new evidence...');
+
+    const logEvent = (stageKey: string, message: string, type: string) => {
+      const timeStr = new Date().toTimeString().split(' ')[0];
+      setLiveEvents(prev => [
+        ...prev,
+        { id: `${Date.now()}-${Math.random()}`, timestamp: timeStr, stage: stageKey, message, type }
+      ]);
+    };
 
     try {
       if (currentCase._raw) {
-        const updated = await challengeCaseApi(
+        logEvent('challenge', `Challenge filed: "${challenge || sourceUrl}" targeting ${target}`, 'phase');
+        const updated = await challengeCaseStreamApi(
           currentCase._raw,
           challenge.trim(),
           sourceUrl.trim(),
-          target === 'Whole verdict' ? '' : target
+          target === 'Whole verdict' ? '' : target,
+          (ev: StreamEvent) => {
+            if (ev.type === 'phase') {
+              setCurrentStageName(ev.message || ev.stage || '');
+              logEvent(ev.stage || 'phase', ev.message || 'Processing...', 'phase');
+            } else if (ev.type === 'url_admitted') {
+              logEvent('url_check', ev.message || `URL admission: ${ev.url_status}`, 'evidence');
+            } else if (ev.type === 'evidence') {
+              if (ev.evidence) {
+                setCurrentCase(prev => ({
+                  ...prev,
+                  evidence: ev.evidence || [],
+                }));
+              }
+              logEvent('evidence', ev.message || `${ev.count} sources in ledger.`, 'evidence');
+            } else if (ev.type === 'arguments_updated') {
+              setCurrentCase(prev => ({
+                ...prev,
+                prosecution: ev.prosecutionClaims || prev.prosecution,
+                defense: ev.defenseClaims || prev.defense,
+                prosecutionSummary: ev.prosecutionSummary || prev.prosecutionSummary,
+                defenseSummary: ev.defenseSummary || prev.defenseSummary,
+              }));
+              logEvent('re_argue', ev.message || 'Opening arguments re-evaluated with new evidence.', 'arguments');
+            } else if (ev.type === 'verdict') {
+              setCurrentCase(prev => ({
+                ...prev,
+                decision: ev.decision || prev.decision,
+                verdict: ev.reasoning || prev.verdict,
+                verdictClaims: ev.verdictClaims || prev.verdictClaims,
+                unresolved: ev.unresolved || prev.unresolved,
+              }));
+              if (ev.revisions) {
+                setRevisions(ev.revisions);
+              }
+              logEvent('verdict', ev.message || `Judicial verdict review complete: ${ev.decision}`, 'verdict');
+            } else if (ev.type === 'complete' && ev.case) {
+              setCurrentCase(ev.case);
+              setRevisions(ev.case.revisions || []);
+              logEvent('complete', ev.message || 'Reconsideration concluded.', 'complete');
+            }
+          }
         );
         setIsLoading(false);
+        setCurrentStageName('Review Concluded');
         setCurrentCase(updated);
         setRevisions(updated.revisions || []);
         setHistoryOpen(true);
@@ -451,7 +622,8 @@ export function Courtroom() {
             <span className="case-id">{currentCase.id}</span>
             <span>Adversarial research</span>
             <span>
-              <span className="status-dot" />Trial concluded
+              <span className={`status-dot ${isLoading ? 'bg-gold animate-ping' : ''}`} />
+              {isLoading ? 'Deliberation in progress' : 'Trial concluded'}
             </span>
             <span className="count flex items-center gap-1">
               {isLive ? <Sparkles size={11} className="text-gold" /> : null}
@@ -464,6 +636,40 @@ export function Courtroom() {
             <span>{allEvidence.length} sources</span>
           </div>
         </div>
+
+        {(isLoading || liveEvents.length > 0) && (
+          <section className="live-stream-box" aria-live="polite">
+            <div className="live-stream-header">
+              <div className="live-stream-title">
+                <span className={isLoading ? "live-pulse" : "status-dot"} />
+                {isLoading ? "LIVE DELIBERATION STREAM" : "DELIBERATION STREAM TRANSCRIPT"}
+              </div>
+              <div className="flex items-center gap-2">
+                <span className="live-stream-stage">
+                  {isLoading ? (currentStageName || 'DELIBERATING') : 'CASE SEALED'}
+                </span>
+                <span className="count">{liveEvents.length} events</span>
+              </div>
+            </div>
+            <div className="live-stream-events">
+              {liveEvents.slice().reverse().map((ev) => (
+                <div className="live-stream-event" key={ev.id}>
+                  <span className="live-stream-time">[{ev.timestamp}]</span>
+                  <span className="flex-1 font-mono text-[11px] leading-relaxed">
+                    {ev.type === 'phase' && <Sparkles size={11} className="inline mr-1.5 text-gold" />}
+                    {ev.type === 'evidence' && <BookOpen size={11} className="inline mr-1.5 text-judicial" />}
+                    {ev.type === 'prosecution' && <Gavel size={11} className="inline mr-1.5 text-prosecution" />}
+                    {ev.type === 'defense' && <Shield size={11} className="inline mr-1.5 text-defense" />}
+                    {ev.type === 'cross_exam' && <MessageSquare size={11} className="inline mr-1.5 text-gold" />}
+                    {ev.type === 'verdict' && <Scale size={11} className="inline mr-1.5 text-judicial" />}
+                    {ev.type === 'complete' && <CheckCheck size={11} className="inline mr-1.5 text-green-400" />}
+                    {ev.message}
+                  </span>
+                </div>
+              ))}
+            </div>
+          </section>
+        )}
 
         {isLoading && (
           <div className="workflow" aria-live="polite">
@@ -514,6 +720,7 @@ export function Courtroom() {
             summary={currentCase.prosecutionSummary}
             limitations={currentCase.prosecutionLimitations}
             isLive={isLive}
+            isLoading={isLoading}
             onSelect={selectSource}
           />
           <Argument
@@ -522,6 +729,7 @@ export function Courtroom() {
             summary={currentCase.defenseSummary}
             limitations={currentCase.defenseLimitations}
             isLive={isLive}
+            isLoading={isLoading}
             onSelect={selectSource}
           />
         </div>
@@ -543,7 +751,14 @@ export function Courtroom() {
           </Button>
           {crossOpen && (
             <div className="thread">
-              {exchanges.length === 0 ? (
+              {isLoading && exchanges.length === 0 ? (
+                <div className="p-5 border border-dashed border-border/70 rounded-md bg-secondary/30 text-center my-2">
+                  <LoaderCircle className="animate-spin mx-auto mb-1 text-gold" size={16} />
+                  <p className="text-xs text-muted-foreground font-mono">
+                    Counsel preparing cross-examination questions on evidence veracity...
+                  </p>
+                </div>
+              ) : exchanges.length === 0 ? (
                 <div className="notice text-xs text-muted-foreground">
                   Cross-examination will appear once counsel presents their preliminary examination.
                 </div>
@@ -600,14 +815,26 @@ export function Courtroom() {
             </div>
           )}
 
-          <div className="decision">
-            <div className="decision-label">THE RULING · {currentCase.decision.toUpperCase()}</div>
-            <h4>{currentCase.decision}</h4>
-            <p>{currentCase.verdict}</p>
-          </div>
+          {isLoading && !currentCase.verdict ? (
+            <div className="p-8 border border-dashed border-border/80 rounded-md bg-secondary/30 text-center my-4">
+              <Scale className="animate-pulse mx-auto mb-3 text-gold" size={28} />
+              <h4 className="font-serif text-base mb-1">Deliberation in progress</h4>
+              <p className="text-xs text-muted-foreground font-mono">
+                The court is weighing affirmative and opposing arguments against verified ledger citations...
+              </p>
+            </div>
+          ) : (
+            <>
+              <div className="decision">
+                <div className="decision-label">THE RULING · {currentCase.decision.toUpperCase()}</div>
+                <h4>{currentCase.decision}</h4>
+                <p>{currentCase.verdict}</p>
+              </div>
 
-          <div className="reasoning-title">Judicial reasoning</div>
-          <p className="reasoning">{currentCase.verdict}</p>
+              <div className="reasoning-title">Judicial reasoning</div>
+              <p className="reasoning">{currentCase.verdict}</p>
+            </>
+          )}
 
           {currentCase.verdictClaims && currentCase.verdictClaims.length > 0 && (
             <table className="verdict-table">
