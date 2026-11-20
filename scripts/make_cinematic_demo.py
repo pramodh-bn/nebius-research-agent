@@ -323,8 +323,12 @@ def record_cinematic_demo():
     # Step 5: Mix speech clips onto master narration track
     print("\n🎛️ Assembling voiceover audio track...")
     voice_track = OUT / "voiceover_master.wav"
-    # Create blank audio of total_video_duration
-    sample_rate = 44100
+    # Detect native sample rate from speech synthesis clips (22050 Hz on Windows TTS)
+    first_clip = next(iter(scene_clips.values()))[0]
+    with wave.open(str(first_clip), "rb") as w:
+        sample_rate = w.getframerate()
+    print(f"  • Voice sample rate detected: {sample_rate} Hz")
+
     total_samples = int(sample_rate * (total_video_duration + 2.0))
     master_samples = [0] * total_samples
 
@@ -336,7 +340,6 @@ def record_cinematic_demo():
             fr = w.getframerate()
             raw = w.readframes(n_frames)
 
-            # Resample / unpack
             start_idx = int(start_t * sample_rate)
             if sw == 2:
                 fmt = f"<{n_frames * ch}h"
@@ -364,10 +367,10 @@ def record_cinematic_demo():
     if final_output.exists():
         final_output.unlink()
 
-    # FFmpeg filter: mix voice (prominent) and music (ducked under voice), scale to 1080p, H.264
+    # FFmpeg filter: voice loud and clear (volume=1.2), music subtly ambient (volume=0.07)
     filter_complex = (
-        "[1:a]volume=1.0[voice];"
-        "[2:a]volume=0.28[music];"
+        "[1:a]volume=1.2[voice];"
+        "[2:a]volume=0.07[music];"
         "[voice][music]amix=inputs=2:duration=first:dropout_transition=2[aout];"
         "[0:v]fps=30,scale=1920:1080:force_original_aspect_ratio=decrease,pad=1920:1080:(ow-iw)/2:(oh-ih)/2[vout]"
     )
