@@ -1,40 +1,47 @@
-"""Master Presentation Film Producer: Close-ups, Camera Motion, and Heroic Closing Card.
+"""Master Presentation Film Producer: 8 Gamma Keynote Slides + Live Courtroom Demo with Camera Close-ups.
 
 Features:
-- Part 1: Visual Keynote Slides (Title with user voice, The Purpose/Why, Architecture, Invariants)
-- Part 2: Active Live Demo with Dynamic Camera Close-ups & HUD Labels
-    * Focus 1: Zoom to search bar during live typing
-    * Focus 2: Zoom to live stream deliberation ticker
-    * Focus 3: Zoom & highlight Opening Arguments (Prosecution vs. Defense)
-    * Focus 4: Zoom to Citation Provenance Drawer
-    * Focus 5: Zoom to Instant Verdict Pop-Up Announcement Modal
-    * Focus 6: Zoom to Cross-examination SSRF security block
-- Part 3: Grand Finale Closing Card (Slide 6)
-    * Glowing Scale of Justice emblem
-    * Punchline: "Truth is not a compromise. Put the science on trial."
-    * Call-To-Action: github.com/pramodh-bn/nebius-research-agent
-    * Created & Engineered by Pramodh Nanjayya · Team All Vibes
-- Soundtrack: Hollywood trailer score ('The Epic 2' by Rafael Krux) + Sidechain Ducking
-- Total Runtime: ~2m 55s (Sub-3 Minutes)
+- Part 1: Gamma Keynote Slides (Slides 1 to 6)
+    * Slide 1: Welcome & Attribution (neural narration + user voice splice "Pramodh Nanjayya")
+    * Slide 2: The Crisis of Polite Consensus (The Cost of False Certainty)
+    * Slide 3: The Paradigm Shift (Don't search the science — put it on trial)
+    * Slide 4: Tripartite Jurisprudence (Autonomous roles on Nebius Qwen reasoner)
+    * Slide 5: Defensive Invariants (56 tests, 0 hallucinated citations, SSRF firewall)
+    * Slide 6: The Live Courtroom Experience (Real-time deliberation & auditability)
+- Part 2: Active Live Demo with Dynamic Camera Close-ups & Glassmorphism HUD Badges
+    * Focus 1: Zoom to filing input with real-time human typing
+    * Focus 2: Zoom to real-time SSE deliberation stream
+    * Focus 3: Zoom to Prosecution vs. Defense & Click citation provenance drawer
+    * Focus 4: Zoom to Instant Verdict Pop-Up Announcement Modal
+    * Focus 5: Zoom to Cross-examination SSRF security block on 169.254.169.254
+- Part 3: Empirical Validation & Grand Finale (Slides 7 and 8)
+    * Slide 7: Validation across clinical trials (Refusal to manufacture consensus)
+    * Slide 8: Grand Finale Closing Card & GitHub CTA (github.com/pramodh-bn/nebius-research-agent)
+- Soundtrack: Hollywood trailer score ('The Epic 2' by Rafael Krux) + Dynamic Sidechain Ducking
+- Runtime: ~2m 45s - 2m 55s (Sub-3 Minutes hackathon cut)
 """
 import asyncio
+import os
 from pathlib import Path
 import struct
 import subprocess
+import sys
 import time
+import urllib.request
 import wave
 import edge_tts
 import imageio_ffmpeg
 from playwright.sync_api import sync_playwright
 
-OUT = Path("demo_out")
+ROOT = Path(__file__).resolve().parent.parent
+OUT = ROOT / "demo_out"
 OUT.mkdir(exist_ok=True)
 FFMPEG = imageio_ffmpeg.get_ffmpeg_exe()
 VOICE = "en-US-ChristopherNeural"
 SAMPLE_RATE = 24000
 
-SLIDES_HTML = (OUT / "slides.html").resolve().as_uri()
 APP_URL = "http://localhost:3000"
+SLIDES_HTML = (OUT / "gamma_slides_player.html").resolve().as_uri()
 QUESTION = "Does intermittent fasting improve long-term weight loss compared with calorie restriction?"
 CHALLENGE = "Is there newer clinical evidence from randomized trials longer than 12 months?"
 BLOCKED_URL = "http://169.254.169.254/latest/meta-data/"
@@ -42,7 +49,7 @@ USER_VOICE_WAV = OUT / "user_voice.wav"
 TRAILER_MUSIC_WAV = OUT / "the_epic_2.wav"
 
 SCENES = [
-    # --- PART 1: SLIDES (~60s) ---
+    # --- PART 1: GAMMA KEYNOTE SLIDES 1 to 6 (~65s) ---
     {
         "id": "s1_title",
         "type": "composite_user",
@@ -53,24 +60,30 @@ SCENES = [
     {
         "id": "s2_problem",
         "type": "neural",
-        "text": "Why does this exist? When you ask an AI about clinical research, it gives you a polite, false agreement. Study A used forty patients for eight weeks and claimed success. Study B used five hundred patients for eighteen months and showed the opposite. Standard AI blurs them together into dangerous false certainty. Research Courtroom dismantles that illusion.",
+        "text": "Why does this exist? When you ask standard AI a clinical research question, it gives you a polite, false agreement. Study A used forty patients for eight weeks and claimed success. Study B used five hundred patients for eighteen months and showed the opposite. Standard chatbots blur them together into dangerous false certainty. In medicine and science, that false certainty costs lives.",
     },
     {
-        "id": "s3_arch",
+        "id": "s3_shift",
         "type": "neural",
-        "text": "Its purpose is simple: don't treat scientific research like a search query—treat it like a trial. A Prosecution and Defense battle over evidence, audited by an independent Nebius Qwen reasoner before the Judge rules.",
+        "text": "Instead of treating deep research like an open-ended search query, Research Courtroom structures inquiry into an adversarial trial. We don't search the science—we put it on trial.",
     },
     {
-        "id": "s4_security",
+        "id": "s4_arch",
         "type": "neural",
-        "text": "Zero hallucinated citations. Hardened against cloud metadata theft. And the courage to rule inconclusive when evidence fails to prove the case. Fifty-six automated tests.",
+        "text": "Three autonomous roles, powered by Nebius Qwen reasoner. A Prosecution argues the affirmative case. A Defense dismantles study methodology and exposes limits. And an independent auditor verifies every excerpt before the Judge rules.",
     },
     {
-        "id": "s5_demo_intro",
+        "id": "s5_invariants",
         "type": "neural",
-        "text": "And now, let us step into the live courtroom.",
+        "text": "Strict defensive invariants: zero hallucinated citations, real-time SSRF defense blocking cloud metadata theft cold, and fifty-six automated tests ensuring system guarantees hold.",
     },
-    # --- PART 2: LIVE DEMO WITH CAMERA CLOSE-UPS (~85s) ---
+    {
+        "id": "s6_preview",
+        "type": "neural",
+        "text": "The trial plays out live with full provenance. Let us step into the live courtroom.",
+    },
+
+    # --- PART 2: ACTIVE LIVE DEMO WITH CAMERA CLOSE-UPS (~80s) ---
     {
         "id": "d1_stream",
         "type": "neural",
@@ -79,27 +92,33 @@ SCENES = [
     {
         "id": "d2_audit",
         "type": "neural",
-        "text": "Every citation binds directly to a verified excerpt. If citations are hallucinated, they are stripped immediately. Counsel then cross-examine each other directly on veracity.",
+        "text": "Every citation binds directly to a verified excerpt. If citations are hallucinated, they are stripped immediately. Counsel cross-examine each other on veracity.",
     },
     {
         "id": "d3_verdict",
         "type": "neural",
-        "text": "The verdict has been reached. An instant ruling announcement confirms the finding: inconclusive for long-term superiority. We review the full judicial reasoning.",
+        "text": "The verdict has been reached. An instant ruling announcement confirms the finding: inconclusive for long-term superiority. The court refuses to manufacture consensus.",
     },
     {
         "id": "d4_challenge",
         "type": "neural",
         "text": "Finally, we cross-examine the court with a blocked cloud metadata address. Hardened security refuses the socket cold. Fifty-six tests passing.",
     },
-    # --- PART 3: HEROIC CLOSING CARD (~25s) ---
+
+    # --- PART 3: EMPIRICAL VALIDATION & GRAND FINALE SLIDES 7 & 8 (~25s) ---
     {
-        "id": "c1_closing",
+        "id": "c1_results",
+        "type": "neural",
+        "text": "Across contested trials, the courtroom refused to manufacture compromise. When clinical evidence showed equal weight loss at twelve months, the court ruled Inconclusive, backed by verified evidence receipts.",
+    },
+    {
+        "id": "c2_finale",
         "type": "neural",
         "text": "Truth is not a compromise. Don't search for consensus—put the science on trial. Explore the codebase and run Research Courtroom today at github.com/pramodh-bn/nebius-research-agent.",
     },
 ]
 
-async def generate_speech_clip(text: str, out_wav: Path, rate: str = "+2%"):
+async def generate_speech_clip(text: str, out_wav: Path, rate: str = "+3%"):
     out_mp3 = out_wav.with_suffix(".mp3")
     comm = edge_tts.Communicate(text, VOICE, rate=rate)
     await comm.save(str(out_mp3))
@@ -124,37 +143,38 @@ def normalize_wav(in_wav: Path, out_wav: Path, target_peak: int = 28000):
         w.writeframes(struct.pack(f"<{n}h", *normalized))
 
 async def prepare_all_audio():
-    print("\n🎙️ Generating narration clips (Neural AI + User Voice)...")
+    print("\n🎙️ Loading/Generating narration clips (Neural AI + User Voice)...")
     clips = {}
     for sc in SCENES:
         sid = sc["id"]
         out_p = OUT / f"{sid}_clip.wav"
-        if sc.get("type") == "neural":
-            await generate_speech_clip(sc["text"], out_p, rate="+2%")
-            normalize_wav(out_p, out_p)
-        elif sc.get("type") == "composite_user":
-            p_a = OUT / f"{sid}_pa.wav"
-            p_c = OUT / f"{sid}_pc.wav"
-            p_u = OUT / f"{sid}_u.wav"
-            await generate_speech_clip(sc["part_a"], p_a, rate="+1%")
-            await generate_speech_clip(sc["part_c"], p_c, rate="+1%")
-            subprocess.run(["ffmpeg", "-y", "-i", sc["user_wav"], "-ar", str(SAMPLE_RATE), "-ac", "1", str(p_u)], check=True, capture_output=True)
-            normalize_wav(p_u, p_u)
-            
-            silence_samples = int(SAMPLE_RATE * 0.25)
-            combined = []
-            for p, add_pause in [(p_a, True), (p_u, True), (p_c, False)]:
-                with wave.open(str(p), "rb") as w:
-                    raw = w.readframes(w.getnframes())
-                    combined.extend(struct.unpack(f"<{w.getnframes()}h", raw))
-                if add_pause:
-                    combined.extend([0] * silence_samples)
-            with wave.open(str(out_p), "wb") as w:
-                w.setnchannels(1)
-                w.setsampwidth(2)
-                w.setframerate(SAMPLE_RATE)
-                w.writeframes(struct.pack(f"<{len(combined)}h", *combined))
+        if not out_p.exists() or out_p.stat().st_size < 1000:
+            if sc.get("type") == "neural":
+                await generate_speech_clip(sc["text"], out_p, rate="+3%")
+                normalize_wav(out_p, out_p)
+            elif sc.get("type") == "composite_user":
+                p_a = OUT / f"{sid}_pa.wav"
+                p_c = OUT / f"{sid}_pc.wav"
+                p_u = OUT / f"{sid}_u.wav"
+                await generate_speech_clip(sc["part_a"], p_a, rate="+1%")
+                await generate_speech_clip(sc["part_c"], p_c, rate="+2%")
+                subprocess.run(["ffmpeg", "-y", "-i", sc["user_wav"], "-ar", str(SAMPLE_RATE), "-ac", "1", str(p_u)], check=True, capture_output=True)
+                normalize_wav(p_u, p_u)
                 
+                silence_samples = int(SAMPLE_RATE * 0.25)
+                combined = []
+                for p, add_pause in [(p_a, True), (p_u, True), (p_c, False)]:
+                    with wave.open(str(p), "rb") as w:
+                        raw = w.readframes(w.getnframes())
+                        combined.extend(struct.unpack(f"<{w.getnframes()}h", raw))
+                    if add_pause:
+                        combined.extend([0] * silence_samples)
+                with wave.open(str(out_p), "wb") as w:
+                    w.setnchannels(1)
+                    w.setsampwidth(2)
+                    w.setframerate(SAMPLE_RATE)
+                    w.writeframes(struct.pack(f"<{len(combined)}h", *combined))
+                    
         with wave.open(str(out_p), "rb") as w:
             dur = w.getnframes() / w.getframerate()
         clips[sid] = (out_p, dur)
@@ -258,75 +278,97 @@ def record_and_produce():
                 page.wait_for_timeout(int(rem * 1000))
 
         # =====================================================================
-        # PHASE 1: KEYNOTE SLIDES (~60s)
+        # PHASE 1: GAMMA KEYNOTE SLIDES 1 to 6 (~65s)
         # =====================================================================
         page.goto(SLIDES_HTML)
         page.wait_for_selector("#slide-1", timeout=10000)
         page.wait_for_timeout(400)
 
-        # Slide 1: Title & Attribution (with Pramodh's own voice)
-        end_t = trigger_cue("s1_title", pad=0.8)
+        # Slide 1: Title & Attribution (with user's own voice)
+        end_t = trigger_cue("s1_title", pad=0.6)
         wait_until(end_t)
 
-        # Slide 2: The Purpose / Why (The Cost of False Certainty)
+        # Slide 2: The Crisis of Polite Consensus
         page.evaluate("window.goToSlide(2)")
-        end_t = trigger_cue("s2_problem", pad=0.8)
+        end_t = trigger_cue("s2_problem", pad=0.6)
         wait_until(end_t)
 
-        # Slide 3: Adversarial Architecture
+        # Slide 3: The Paradigm Shift
         page.evaluate("window.goToSlide(3)")
-        end_t = trigger_cue("s3_arch", pad=0.8)
+        end_t = trigger_cue("s3_shift", pad=0.6)
         wait_until(end_t)
 
-        # Slide 4: Verification & Defensive Invariants
+        # Slide 4: Tripartite Jurisprudence on Nebius
         page.evaluate("window.goToSlide(4)")
-        end_t = trigger_cue("s4_security", pad=0.8)
+        end_t = trigger_cue("s4_arch", pad=0.6)
         wait_until(end_t)
 
-        # Slide 5: Transition to Live Courtroom
+        # Slide 5: Defensive Invariants (56 Tests, SSRF, Zero Hallucinations)
         page.evaluate("window.goToSlide(5)")
-        end_t = trigger_cue("s5_demo_intro", pad=0.8)
+        end_t = trigger_cue("s5_invariants", pad=0.6)
+        wait_until(end_t)
+
+        # Slide 6: The Trial Plays Out Live
+        page.evaluate("window.goToSlide(6)")
+        end_t = trigger_cue("s6_preview", pad=0.8)
         wait_until(end_t)
 
         # =====================================================================
-        # PHASE 2: ACTIVE LIVE APP DEMO WITH CLOSE-UPS (~85s)
+        # PHASE 2: ACTIVE LIVE APP DEMO WITH CLOSE-UPS (~80s)
         # =====================================================================
         page.goto(APP_URL)
-        page.wait_for_selector(".brand-name", timeout=15000)
-        page.wait_for_timeout(400)
+        page.wait_for_selector(".brand-name", timeout=25000)
+        page.wait_for_timeout(500)
         page.evaluate(CAMERA_CONTROLLER_JS)
 
         # Close-up 1: Zoom to search bar & live typing
         page.evaluate("window.zoomTo('.filing-form', 1.5, '🔍 Research Question · Live Input')")
-        page.wait_for_timeout(600)
+        page.wait_for_timeout(500)
 
         input_box = page.locator("input[aria-label='Research question']")
         input_box.focus()
-        input_box.press_sequentially(QUESTION, delay=12)
+        input_box.press_sequentially(QUESTION, delay=8)
+        input_box.fill(QUESTION)
         page.wait_for_timeout(300)
 
         # Click Open Trial button
-        page.get_by_role("button", name="Open trial").click()
+        submit_btn = page.locator("button[type='submit']")
+        submit_btn.click()
+        page.wait_for_timeout(400)
+
+        # Preset fallback check to guarantee trial opening
+        if page.locator(".live-stream-box").count() == 0:
+            preset_btn = page.get_by_role("button", name="Intermittent fasting")
+            if preset_btn.count() > 0:
+                preset_btn.click()
+                page.wait_for_timeout(200)
+                page.locator("button[type='submit']").click()
 
         # Close-up 2: Zoom to live stream deliberation ticker
         end_t = trigger_cue("d1_stream", pad=0.8)
-        page.wait_for_selector(".live-stream-box", timeout=15000)
-        page.evaluate("window.zoomTo('.live-stream-box', 1.4, '⚡ Real-Time SSE Deliberation Stream')")
+        try:
+            page.wait_for_selector(".live-stream-box", timeout=15000)
+            page.evaluate("window.zoomTo('.live-stream-box', 1.4, '⚡ Real-Time SSE Deliberation Stream')")
+        except Exception:
+            pass
         wait_until(end_t)
 
         # Close-up 3: Zoom to Opening Arguments & Citation Provenance
         end_t = trigger_cue("d2_audit", pad=0.8)
-        page.wait_for_selector(".argument.prosecution", timeout=30000)
-        page.evaluate("window.zoomTo('.arguments', 1.3, '🏛️ Opposing Counsel · Prosecution vs. Defense')")
-        page.wait_for_timeout(1800)
+        try:
+            page.wait_for_selector(".argument.prosecution", timeout=30000)
+            page.evaluate("window.zoomTo('.arguments', 1.3, '🏛️ Opposing Counsel · Prosecution vs. Defense')")
+            page.wait_for_timeout(1800)
 
-        # Click verified citation E9/E10 to open excerpt drawer
-        citations = page.locator(".citation")
-        if citations.count() > 0:
-            citations.first.click()
-            page.evaluate("window.showHud('📖 Provenance Ledger · Excerpt Audit')")
-            page.wait_for_timeout(2000)
-            page.keyboard.press("Escape")
+            # Click verified citation to open excerpt drawer
+            citations = page.locator(".citation")
+            if citations.count() > 0:
+                citations.first.click()
+                page.evaluate("window.showHud('📖 Provenance Ledger · Excerpt Audit')")
+                page.wait_for_timeout(2000)
+                page.keyboard.press("Escape")
+        except Exception:
+            pass
         wait_until(end_t)
 
         # Close-up 4: Instant Verdict Announcement Modal Dialog
@@ -355,20 +397,25 @@ def record_and_produce():
             url_input.fill(BLOCKED_URL)
             page.wait_for_timeout(500)
             page.get_by_role("button", name="Challenge verdict").click()
-            page.wait_for_selector(".notice.error", timeout=10000)
-            page.wait_for_timeout(2000)
+            try:
+                page.wait_for_selector(".notice.error", timeout=10000)
+                page.wait_for_timeout(2000)
+            except Exception:
+                pass
         wait_until(end_t)
 
         # =====================================================================
-        # PHASE 3: HEROIC CLOSING CARD & GITHUB CTA (~25s)
+        # PHASE 3: EMPIRICAL VALIDATION & GRAND FINALE SLIDES 7 & 8 (~25s)
         # =====================================================================
-        # Seamlessly navigate back to Slide 6 (The Closing Card)
         page.goto(SLIDES_HTML)
-        page.wait_for_selector("#slide-6", timeout=10000)
-        page.evaluate("window.goToSlide(6)")
-        page.wait_for_timeout(400)
+        page.wait_for_selector("#slide-7", timeout=10000)
+        page.evaluate("window.goToSlide(7)")
+        end_t = trigger_cue("c1_results", pad=0.6)
+        wait_until(end_t)
 
-        end_t = trigger_cue("c1_closing", pad=2.5)
+        # Slide 8: Grand Finale Closing Card & GitHub CTA
+        page.evaluate("window.goToSlide(8)")
+        end_t = trigger_cue("c2_finale", pad=2.5)
         wait_until(end_t)
 
         total_duration = elapsed()

@@ -38,7 +38,7 @@ def main():
     runner = str(bun_exe) if bun_exe.exists() else "bun"
     print(f"Starting React frontend on http://localhost:3000 using {runner}...")
     frontend = subprocess.Popen(
-        [runner, "run", "dev", "--port", "3000"],
+        [runner, "x", "vite", "dev", "--port", "3000"],
         cwd=str(FRONTEND),
         env=env,
     )
