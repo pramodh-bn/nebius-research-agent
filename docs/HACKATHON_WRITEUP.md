@@ -8,16 +8,31 @@
 
 ---
 
-## 1. Executive Summary
+## 1. Why This Project Exists: The Cost of False Certainty
 
-When ordinary AI systems are asked a contested, multi-faceted scientific question—such as whether intermittent fasting is superior to continuous calorie restriction, or whether ultra-processed foods cause depression independently of caloric intake—they almost invariably produce a **"consensus illusion."** They flatten deep clinical trial contradictions into a polite, homogenized, and often hallucinated compromise. Worse, when challenged by a user, standard conversational agents exhibit compliance bias, reversing their conclusions arbitrarily without evidentiary support.
+If you ask today's leading conversational AI a critical medical or scientific question—such as whether a dietary protocol treats metabolic dysfunction, or whether a drug compound is safe long-term—the AI responds with a smooth, articulate, highly confident answer.
 
-**Research Courtroom** reimagines automated research through the lens of **adversarial jurisprudence**. Instead of a single LLM attempting to synthesize truth in a vacuum, Research Courtroom constructs an impartial judicial trial:
-1. **The Prosecution Counsel** presents the affirmative case grounded strictly in admitted evidence.
-2. **The Defense Counsel** challenges study duration, sample bias, protocol heterogeneity, and adverse effects.
-3. **An Independent Reasoner (Nebius Qwen-2.5)** audits every extracted claim against the raw source excerpts before any verdict is rendered.
-4. **The Impartial Judge** synthesizes a formal judicial ruling. If no claim survives evidentiary verification, the system is **forced by code invariant** to rule *Inconclusive*.
-5. **Interactive Cross-Examination:** Users can challenge the court with new evidence or alternative theories. Hardened Server-Side Request Forgery (SSRF) protections ensure security against cloud metadata theft (`169.254.169.254`) and private network probing.
+**That false confidence is dangerous.**
+
+In real science, there is rarely a polite consensus. 
+- Clinical Trial A reports dramatic positive results on 40 patients over 8 weeks.
+- Clinical Trial B reports zero long-term benefit on 500 patients over 18 months, with a 35% dropout rate due to adverse events.
+- Clinical Trial C finds that the effect vanishes when caloric intake is strictly controlled.
+
+When standard chatbots ingest these contradictory papers, they do what their training optimizes them for: **they please the user by synthesizing a synthetic, homogenized "middle ground."** They gloss over study duration limits. They fail to mention that the positive paper was underpowered. And worse, they hallucinate citations to support their synthetic consensus.
+
+### The Purpose of Research Courtroom
+**Research Courtroom exists to replace the dangerous illusion of consensus with the rigor of adversarial jurisprudence.**
+
+The purpose of this project is not to summarize research. **Its purpose is to put scientific claims on trial.**
+
+Instead of trusting a single LLM to be an oracle, Research Courtroom constructs a courtroom:
+- One AI agent acts as the **Prosecution**, mandated to prove the affirmative case using only verifiable evidence.
+- An opposing AI agent acts as the **Defense**, explicitly incentivized to dismantle study methodology, expose sample size limitations, and highlight adverse clinical signals.
+- A dedicated **Zero-Shot Auditor (Nebius Qwen-2.5)** verifies every quoted excerpt against raw text before any judge sees it.
+- An **Impartial Judge** issues a formal verdict—and unlike standard chatbots that pretend to know the answer, the judge is **enforced by code invariant to rule *Inconclusive*** whenever the evidence fails to prove the case.
+
+In medicine, engineering, and policy, truth is not found in polite summaries. It is forged through adversarial cross-examination. That is why Research Courtroom exists.
 
 ---
 
