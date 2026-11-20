@@ -4,8 +4,8 @@
 
 **One-line pitch:** Contested research questions, argued by a prosecution and defense from cited web evidence and ruled on by an impartial judge, for anyone who needs a verifiable answer rather than a one-sided summary.
 
-- **Demo video (2–3 min):** _TODO: add link after recording (script: `docs/DEMO_SCRIPT.md`)_
-- **Team:** _TODO: names / GitHub handles_
+- **Demo video (3 min):** [YouTube (1080p)](https://youtu.be/Ie_6eDqACPk) · `https://youtu.be/Ie_6eDqACPk`
+- **Team:** All Vibes · Pramodh Nanjayya ([@pramodh-bn](https://github.com/pramodh-bn))
 
 ## The problem
 Researchers and curious users facing disputed questions. A single synthesized answer hides the opposing case. Research Courtroom surfaces both sides, grounds every claim in an evidence ledger, checks whether the cited excerpt really supports the claim, and lets the user challenge the verdict. It can answer "inconclusive" and says why.
