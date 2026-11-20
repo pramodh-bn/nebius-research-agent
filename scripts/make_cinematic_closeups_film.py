@@ -12,13 +12,13 @@ Features:
     * Focus 1: Zoom to filing input with real-time human typing
     * Focus 2: Zoom to real-time SSE deliberation stream
     * Focus 3: Zoom to Prosecution vs. Defense & Click citation provenance drawer
-    * Focus 4: Zoom to Instant Verdict Pop-Up Announcement Modal
+    * Focus 4: Zoom to Instant Verdict Pop-Up Announcement Modal (PERFECTLY SYNCED)
     * Focus 5: Zoom to Cross-examination SSRF security block on 169.254.169.254
 - Part 3: Empirical Validation & Grand Finale (Slides 7 and 8)
     * Slide 7: Validation across clinical trials (Refusal to manufacture consensus)
-    * Slide 8: Grand Finale Closing Card & GitHub CTA (github.com/pramodh-bn/nebius-research-agent)
-- Soundtrack: Hollywood trailer score ('The Epic 2' by Rafael Krux) + Dynamic Sidechain Ducking
-- Runtime: ~2m 45s - 2m 55s (Sub-3 Minutes hackathon cut)
+    * Slide 8: Grand Finale Closing Card & GitHub CTA ("Find it on GitHub and run Research Courtroom today")
+- Soundtrack: Hollywood trailer score ('The Epic 2' by Rafael Krux) with Continuous Looping + Dynamic Sidechain Ducking
+- Runtime: ~2m 50s - 3m 05s
 """
 import asyncio
 import os
@@ -114,7 +114,7 @@ SCENES = [
     {
         "id": "c2_finale",
         "type": "neural",
-        "text": "Truth is not a compromise. Don't search for consensus—put the science on trial. Explore the codebase and run Research Courtroom today at github.com/pramodh-bn/nebius-research-agent.",
+        "text": "Truth is not a compromise. Don't search for consensus—put the science on trial. Find it on GitHub and run Research Courtroom today.",
     },
 ]
 
@@ -345,51 +345,55 @@ def record_and_produce():
                 page.locator("button[type='submit']").click()
 
         # Close-up 2: Zoom to live stream deliberation ticker
-        end_t = trigger_cue("d1_stream", pad=0.8)
         try:
             page.wait_for_selector(".live-stream-box", timeout=15000)
             page.evaluate("window.zoomTo('.live-stream-box', 1.4, '⚡ Real-Time SSE Deliberation Stream')")
         except Exception:
             pass
+        end_t = trigger_cue("d1_stream", pad=0.8)
         wait_until(end_t)
 
         # Close-up 3: Zoom to Opening Arguments & Citation Provenance
-        end_t = trigger_cue("d2_audit", pad=0.8)
         try:
             page.wait_for_selector(".argument.prosecution", timeout=30000)
             page.evaluate("window.zoomTo('.arguments', 1.3, '🏛️ Opposing Counsel · Prosecution vs. Defense')")
-            page.wait_for_timeout(1800)
-
-            # Click verified citation to open excerpt drawer
-            citations = page.locator(".citation")
-            if citations.count() > 0:
-                citations.first.click()
-                page.evaluate("window.showHud('📖 Provenance Ledger · Excerpt Audit')")
-                page.wait_for_timeout(2000)
-                page.keyboard.press("Escape")
+            page.wait_for_timeout(1000)
         except Exception:
             pass
+        end_t = trigger_cue("d2_audit", pad=0.8)
+        page.wait_for_timeout(1200)
+
+        # Click verified citation to open excerpt drawer
+        citations = page.locator(".citation")
+        if citations.count() > 0:
+            citations.first.click()
+            page.evaluate("window.showHud('📖 Provenance Ledger · Excerpt Audit')")
+            page.wait_for_timeout(2200)
+            page.keyboard.press("Escape")
         wait_until(end_t)
 
-        # Close-up 4: Instant Verdict Announcement Modal Dialog
-        end_t = trigger_cue("d3_verdict", pad=0.8)
+        # Close-up 4: Instant Verdict Announcement Modal Dialog (PERFECT SYNC: Wait for modal FIRST!)
         try:
-            page.wait_for_selector("text=The Verdict Has Been Reached", timeout=50000)
+            page.wait_for_selector("text=The Verdict Has Been Reached", timeout=60000)
             page.evaluate("window.resetZoom('⚖️ Judicial Verdict · Inconclusive Invariant')")
-            page.wait_for_timeout(2200)
-            review_btn = page.get_by_role("button", name="Review Full Verdict")
-            if review_btn.count() > 0:
-                review_btn.click()
-                page.wait_for_timeout(1000)
+            page.wait_for_timeout(600)
         except Exception:
             page.get_by_text("Judicial verdict").first.scroll_into_view_if_needed()
+
+        # Now that the modal is physically on screen, trigger the narration cue!
+        end_t = trigger_cue("d3_verdict", pad=1.0)
+        page.wait_for_timeout(2500)
+        review_btn = page.get_by_role("button", name="Review Full Verdict")
+        if review_btn.count() > 0:
+            review_btn.click()
+            page.wait_for_timeout(1500)
         wait_until(end_t)
 
         # Close-up 5: Cross-Examination & SSRF Security Block
-        end_t = trigger_cue("d4_challenge", pad=0.8)
         page.get_by_text("Cross-examine the court").first.scroll_into_view_if_needed()
         page.evaluate("window.zoomTo('.challenge-form', 1.45, '🛡️ Hardened SSRF Defense · Metadata Block')")
         page.wait_for_timeout(400)
+        end_t = trigger_cue("d4_challenge", pad=0.8)
         challenge_input = page.locator("#challenge")
         url_input = page.locator("#source-url")
         if challenge_input.count() > 0 and url_input.count() > 0:
@@ -415,7 +419,7 @@ def record_and_produce():
 
         # Slide 8: Grand Finale Closing Card & GitHub CTA
         page.evaluate("window.goToSlide(8)")
-        end_t = trigger_cue("c2_finale", pad=2.5)
+        end_t = trigger_cue("c2_finale", pad=3.5)
         wait_until(end_t)
 
         total_duration = elapsed()
@@ -451,19 +455,20 @@ def record_and_produce():
         w.setframerate(SAMPLE_RATE)
         w.writeframes(struct.pack(f"<{len(master)}h", *[max(-32767, min(32767, int(s * gain))) for s in master]))
 
-    # Mix with Trailer Music using Sidechain Ducking
-    print("\n🎵 Mastering Hollywood Trailer Soundtrack with Sidechain Ducking...")
+    # Mix with Trailer Music using Continuous Looping and Sidechain Ducking
+    print("\n🎵 Mastering Hollywood Trailer Soundtrack with Continuous Looping & Sidechain Ducking...")
     trailer_master = OUT / "slides_soundtrack_master.wav"
-    fade_st = max(0, total_duration - 3.5)
+    fade_st = max(0, total_duration - 2.5)
     filter_complex = (
-        f"[1:a]afade=t=out:st={fade_st:.1f}:d=3.2,volume=0.28[music];"
-        f"[music][0:a]sidechaincompress=threshold=0.04:ratio=4:attack=50:release=450[ducked];"
+        f"[1:a]afade=t=out:st={fade_st:.1f}:d=2.4,volume=0.32[music];"
+        f"[music][0:a]sidechaincompress=threshold=0.035:ratio=4:attack=40:release=400[ducked];"
         f"[0:a]volume=1.3[voice];"
         f"[voice][ducked]amix=inputs=2:duration=first:dropout_transition=2[aout]"
     )
     subprocess.run([
         FFMPEG, "-y",
         "-i", str(master_wav),
+        "-stream_loop", "-1",
         "-i", str(TRAILER_MUSIC_WAV),
         "-filter_complex", filter_complex,
         "-map", "[aout]",
